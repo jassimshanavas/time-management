@@ -163,15 +163,17 @@ export default function GoalsPage() {
       <DataLoader>
         <MainLayout>
           <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <h1 className="text-3xl font-bold tracking-tight">Goals</h1>
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h1 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-foreground to-foreground/60 bg-clip-text text-transparent">
+                  Goals
+                </h1>
                 <p className="text-muted-foreground">Track your long-term objectives</p>
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-2">
                 {selectedProjectId && (
-                  <Badge variant="outline" className="h-10 px-4 hidden md:flex items-center gap-2">
-                    <span className="text-muted-foreground mr-1">Filtered by:</span>
+                  <Badge variant="outline" className="h-9 px-4 flex items-center gap-2 bg-background/50 backdrop-blur-sm border-primary/10">
+                    <span className="text-muted-foreground mr-1 hidden sm:inline">Filtered by:</span>
                     {selectedProjectId === 'personal' ? 'Personal' : projects.find(p => p.id === selectedProjectId)?.name}
                   </Badge>
                 )}
@@ -190,6 +192,7 @@ export default function GoalsPage() {
                           projectId: '',
                         });
                       }}
+                      className="shadow-lg shadow-primary/20"
                     >
                       <Plus className="h-4 w-4 mr-2" />
                       New Goal
@@ -208,6 +211,7 @@ export default function GoalsPage() {
                           value={formData.title}
                           onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                           required
+                          className="bg-muted/30"
                         />
                       </div>
                       <div className="space-y-2">
@@ -216,6 +220,7 @@ export default function GoalsPage() {
                           id="description"
                           value={formData.description}
                           onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                          className="bg-muted/30"
                         />
                       </div>
                       <div className="space-y-2">
@@ -225,15 +230,20 @@ export default function GoalsPage() {
                           type="date"
                           value={formData.targetDate}
                           onChange={(e) => setFormData({ ...formData, targetDate: e.target.value })}
+                          className="bg-muted/30"
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label>Progress: {formData.progress}%</Label>
+                        <Label className="flex justify-between">
+                          <span>Progress</span>
+                          <span className="text-primary font-bold">{formData.progress}%</span>
+                        </Label>
                         <Slider
                           value={[formData.progress]}
                           onValueChange={(value) => setFormData({ ...formData, progress: value[0] })}
                           max={100}
                           step={5}
+                          className="py-4"
                         />
                       </div>
                       <div className="space-y-2">
@@ -243,9 +253,6 @@ export default function GoalsPage() {
                           onChange={(value) => setFormData({ ...formData, projectId: value })}
                           placeholder="Select a project"
                         />
-                        <p className="text-xs text-muted-foreground">
-                          Assign this goal to a project
-                        </p>
                       </div>
                       <div className="space-y-2">
                         <Label>Milestones</Label>
@@ -255,19 +262,20 @@ export default function GoalsPage() {
                             onChange={(e) => setFormData({ ...formData, newMilestone: e.target.value })}
                             placeholder="Add a milestone..."
                             onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addMilestone())}
+                            className="bg-muted/30"
                           />
-                          <Button type="button" onClick={addMilestone}>
+                          <Button type="button" onClick={addMilestone} variant="secondary">
                             Add
                           </Button>
                         </div>
-                        <div className="space-y-2 mt-2">
+                        <div className="space-y-2 mt-4">
                           {formData.milestones.map((milestone) => (
-                            <div key={milestone.id} className="flex items-center gap-2 p-2 border rounded">
+                            <div key={milestone.id} className="flex items-center gap-3 p-3 bg-muted/20 border rounded-xl group">
                               <Checkbox
                                 checked={milestone.completed}
                                 onCheckedChange={() => toggleMilestone(milestone.id)}
                               />
-                              <span className={milestone.completed ? 'line-through flex-1' : 'flex-1'}>
+                              <span className={`flex-1 text-sm font-medium ${milestone.completed ? 'line-through text-muted-foreground' : ''}`}>
                                 {milestone.title}
                               </span>
                               <Button
@@ -275,6 +283,7 @@ export default function GoalsPage() {
                                 size="sm"
                                 variant="ghost"
                                 onClick={() => removeMilestone(milestone.id)}
+                                className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity rounded-full hover:bg-destructive/10 hover:text-destructive"
                               >
                                 <Trash2 className="h-4 w-4" />
                               </Button>
@@ -282,7 +291,7 @@ export default function GoalsPage() {
                           ))}
                         </div>
                       </div>
-                      <Button type="submit" className="w-full">
+                      <Button type="submit" className="w-full h-11 text-base font-semibold shadow-lg shadow-primary/20">
                         {editingGoal ? 'Update Goal' : 'Create Goal'}
                       </Button>
                     </form>
@@ -291,77 +300,97 @@ export default function GoalsPage() {
               </div>
             </div>
 
-            <div className="grid gap-6 md:grid-cols-2">
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-2">
               {filteredGoals.length === 0 ? (
-                <Card className="md:col-span-2">
-                  <CardContent className="p-8 text-center">
-                    <Target className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-                    <p className="text-muted-foreground">
+                <Card className="md:col-span-2 bg-background/40 backdrop-blur-sm border-dashed border-2 py-12">
+                  <CardContent className="flex flex-col items-center justify-center text-center">
+                    <div className="h-16 w-16 rounded-full bg-muted/50 flex items-center justify-center mb-4">
+                      <Target className="h-8 w-8 text-muted-foreground" />
+                    </div>
+                    <p className="text-xl font-semibold mb-2">No goals found</p>
+                    <p className="text-muted-foreground max-w-xs mx-auto">
                       {goals.length === 0
-                        ? 'No goals yet. Create your first goal!'
-                        : 'No goals found for this filter'}
+                        ? 'Set your first goal to start tracking your progress!'
+                        : 'Try adjusting your filters to find what you looking for.'}
                     </p>
                   </CardContent>
                 </Card>
               ) : (
                 filteredGoals.map((goal) => (
-                  <Card key={goal.id} className="hover:shadow-md transition-shadow">
-                    <CardHeader>
+                  <Card key={goal.id} className="group overflow-hidden bg-background/40 backdrop-blur-xl border-primary/10 hover:border-primary/30 transition-all duration-300 shadow-xl">
+                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary/50 to-primary/10" />
+                    <CardHeader className="pb-2">
                       <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-2">
-                            <CardTitle className="text-xl">{goal.title}</CardTitle>
-                            {goal.projectId && <ProjectBadge projectId={goal.projectId} />}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex flex-wrap items-center gap-2 mb-2">
+                            <CardTitle className="text-xl font-bold truncate">{goal.title}</CardTitle>
+                            {goal.projectId && <ProjectBadge projectId={goal.projectId} className="h-5 text-[10px]" />}
                           </div>
                           {goal.description && (
-                            <p className="text-sm text-muted-foreground">{goal.description}</p>
+                            <p className="text-sm text-muted-foreground line-clamp-2">{goal.description}</p>
                           )}
                         </div>
-                        <div className="flex gap-1">
-                          <Button size="sm" variant="ghost" onClick={() => handleEdit(goal)}>
+                        <div className="flex gap-1 shrink-0 ml-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Button size="icon" variant="ghost" onClick={() => handleEdit(goal)} className="h-8 w-8 rounded-full">
                             <Edit className="h-4 w-4" />
                           </Button>
-                          <Button size="sm" variant="ghost" onClick={() => deleteGoal(goal.id)}>
+                          <Button size="icon" variant="ghost" onClick={() => deleteGoal(goal.id)} className="h-8 w-8 rounded-full hover:bg-destructive/10 hover:text-destructive">
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         </div>
                       </div>
                     </CardHeader>
-                    <CardContent className="space-y-4">
-                      <div>
+                    <CardContent className="space-y-6">
+                      <div className="relative pt-2">
                         <div className="flex items-center justify-between mb-2">
-                          <span className="text-sm font-medium">Progress</span>
-                          <span className="text-sm text-muted-foreground">{goal.progress}%</span>
+                          <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Overall Progress</span>
+                          <span className="text-sm font-bold text-primary">{goal.progress}%</span>
                         </div>
-                        <Progress value={goal.progress} />
+                        <Progress value={goal.progress} className="h-2 rounded-full bg-primary/10" />
                       </div>
 
-                      {goal.targetDate && (
-                        <div className="text-sm text-muted-foreground">
-                          Target: {format(new Date(goal.targetDate), 'MMM d, yyyy')}
+                      <div className="flex items-center gap-4 text-xs font-semibold text-muted-foreground flex-wrap">
+                        {goal.targetDate && (
+                          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-muted/50 border border-primary/5">
+                            <Target className="h-3.5 w-3.5 text-primary" />
+                            <span>Target: {format(new Date(goal.targetDate), 'MMM d, yyyy')}</span>
+                          </div>
+                        )}
+                        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-muted/50 border border-primary/5">
+                          <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                          <span>{goal.milestones.filter(m => m.completed).length}/{goal.milestones.length} Milestones</span>
                         </div>
-                      )}
+                      </div>
 
                       {goal.milestones.length > 0 && (
-                        <div className="space-y-2">
-                          <h4 className="text-sm font-semibold">Milestones</h4>
-                          {goal.milestones.map((milestone) => (
-                            <div key={milestone.id} className="flex items-center gap-2">
-                              <Checkbox
-                                checked={milestone.completed}
-                                onCheckedChange={() => toggleGoalMilestone(goal.id, milestone.id)}
-                              />
-                              <span
-                                className={`text-sm ${milestone.completed ? 'line-through text-muted-foreground' : ''
-                                  }`}
-                              >
-                                {milestone.title}
-                              </span>
-                              {milestone.completed && (
-                                <CheckCircle2 className="h-4 w-4 text-green-500 ml-auto" />
-                              )}
-                            </div>
-                          ))}
+                        <div className="space-y-2 mt-4 pt-4 border-t border-primary/5">
+                          <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3">Key Milestones</h4>
+                          <div className="grid gap-2">
+                            {goal.milestones.map((milestone) => (
+                              <div key={milestone.id} className={`flex items-start gap-3 p-3 rounded-xl border transition-all ${milestone.completed ? 'bg-emerald-500/5 border-emerald-500/10' : 'bg-muted/20 border-transparent hover:border-primary/10'}`}>
+                                <Checkbox
+                                  checked={milestone.completed}
+                                  onCheckedChange={() => toggleGoalMilestone(goal.id, milestone.id)}
+                                  className="mt-0.5"
+                                />
+                                <div className="flex-1 min-w-0">
+                                  <p className={`text-sm font-medium leading-tight ${milestone.completed ? 'line-through text-muted-foreground opacity-60' : ''}`}>
+                                    {milestone.title}
+                                  </p>
+                                  {milestone.completed && milestone.completedAt && (
+                                    <p className="text-[10px] text-emerald-600 font-bold mt-1 uppercase">
+                                      Done {format(new Date(milestone.completedAt), 'MMM d')}
+                                    </p>
+                                  )}
+                                </div>
+                                {milestone.completed && (
+                                  <div className="h-5 w-5 rounded-full bg-emerald-500/20 flex items-center justify-center">
+                                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       )}
                     </CardContent>

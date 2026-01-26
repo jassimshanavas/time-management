@@ -26,7 +26,7 @@ import { Task } from '@/types';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 
-const HOUR_HEIGHT = 80;
+const HOUR_HEIGHT = 60;
 const STEP_MINUTES = 15;
 const STEP_HEIGHT = (STEP_MINUTES / 60) * HOUR_HEIGHT;
 
@@ -124,117 +124,123 @@ export default function DayTimelinePage() {
             <DataLoader>
                 <MainLayout>
                     <Toaster position="top-right" richColors />
-                    <div className="flex flex-col h-[calc(100vh-100px)]">
+                    <div className="flex flex-col h-full bg-background/50 animate-in fade-in duration-700">
                         {/* Header */}
-                        <div className="flex items-center justify-between mb-6">
+                        <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between mb-8 p-4 sm:p-0">
                             <div>
-                                <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
-                                    <Clock className="h-8 w-8 text-primary" />
-                                    Day Planner
+                                <h1 className="text-2xl sm:text-3xl font-black tracking-tight flex items-center gap-2 bg-gradient-to-r from-foreground to-foreground/60 bg-clip-text text-transparent">
+                                    <Clock className="h-6 w-6 text-primary animate-pulse" />
+                                    Day Velocity
                                 </h1>
-                                <p className="text-muted-foreground italic">Drag to move • Pull to resize</p>
+                                <p className="text-[10px] text-muted-foreground font-medium mt-0.5">Orchestrate your daily flow with precision</p>
                             </div>
 
-                            <div className="flex items-center gap-4 bg-muted/50 p-1 rounded-xl border">
-                                <Button variant="ghost" size="icon" onClick={() => setSelectedDate(subDays(selectedDate, 1))}>
-                                    <ChevronLeft className="h-4 w-4" />
-                                </Button>
-                                <div className="flex items-center gap-2 px-2">
-                                    <CalendarIcon className="h-4 w-4 text-primary" />
-                                    <span className="font-semibold min-w-[140px] text-center">
-                                        {format(selectedDate, 'EEEE, MMM d')}
-                                    </span>
+                            <div className="flex flex-col sm:flex-row items-center gap-2 bg-background/40 backdrop-blur-xl p-1.5 rounded-xl border border-primary/10 shadow-lg">
+                                <div className="flex items-center gap-0.5">
+                                    <Button variant="ghost" size="icon" onClick={() => setSelectedDate(subDays(selectedDate, 1))} className="h-8 w-8 rounded-lg hover:bg-primary/10">
+                                        <ChevronLeft className="h-3.5 w-3.5" />
+                                    </Button>
+                                    <div className="flex items-center gap-1.5 px-3 py-1 bg-primary/5 rounded-lg border border-primary/5">
+                                        <CalendarIcon className="h-3.5 w-3.5 text-primary" />
+                                        <span className="font-black text-xs min-w-[100px] text-center uppercase tracking-tighter">
+                                            {format(selectedDate, 'EEE, MMM d')}
+                                        </span>
+                                    </div>
+                                    <Button variant="ghost" size="icon" onClick={() => setSelectedDate(addDays(selectedDate, 1))} className="h-8 w-8 rounded-lg hover:bg-primary/10">
+                                        <ChevronRight className="h-3.5 w-3.5" />
+                                    </Button>
                                 </div>
-                                <Button variant="ghost" size="icon" onClick={() => setSelectedDate(addDays(selectedDate, 1))}>
-                                    <ChevronRight className="h-4 w-4" />
-                                </Button>
-                                <div className="h-4 w-px bg-border mx-1" />
-                                <Button variant="secondary" size="sm" onClick={() => setSelectedDate(new Date())}>
+                                <div className="hidden sm:block h-4 w-px bg-primary/10 mx-0.5" />
+                                <Button variant="secondary" size="sm" onClick={() => setSelectedDate(new Date())} className="w-full sm:w-auto h-8 rounded-lg font-bold px-4 text-xs">
                                     Today
                                 </Button>
                             </div>
                         </div>
 
-                        <div className="flex gap-6 flex-1 min-h-0">
-                            {/* Left Panel: Unscheduled Tasks */}
-                            <Card className="w-80 flex flex-col bg-muted/20 border-primary/10">
-                                <CardHeader className="pb-3 px-4">
+                        <div className="flex flex-col lg:flex-row gap-8 flex-1 min-h-0 bg-transparent">
+                            {/* Left Panel: Unscheduled Tasks (Responsive: Top on mobile, Left on desktop) */}
+                            <Card className="w-full lg:w-72 flex flex-col bg-background/40 backdrop-blur-xl border-primary/5 shadow-xl rounded-2xl overflow-hidden shrink-0 h-[350px] lg:h-full">
+                                <CardHeader className="pb-3 px-4 bg-muted/30 border-b border-primary/5">
                                     <div className="flex items-center justify-between mb-2">
-                                        <CardTitle className="text-sm font-bold flex items-center gap-2">
-                                            <Layout className="h-4 w-4 text-purple-500" />
-                                            Unscheduled
+                                        <CardTitle className="text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5 text-primary">
+                                            <Layout className="h-3.5 w-3.5" />
+                                            Backlog
                                         </CardTitle>
-                                        <Badge variant="secondary">{unscheduledTasks.length}</Badge>
+                                        <Badge variant="secondary" className="font-black h-4 px-1.5 text-[9px] rounded-md">{unscheduledTasks.length}</Badge>
                                     </div>
-                                    <div className="relative">
-                                        <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+                                    <div className="relative group">
+                                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground transition-colors group-focus-within:text-primary" />
                                         <Input
-                                            placeholder="Find tasks..."
-                                            className="h-8 pl-8 text-xs bg-background"
+                                            placeholder="Audit tasks..."
+                                            className="h-8 pl-8 text-xs bg-background/50 border-primary/5 rounded-lg focus:ring-2 focus:ring-primary/20 transition-all"
                                             value={searchQuery}
                                             onChange={e => setSearchQuery(e.target.value)}
                                         />
                                     </div>
                                 </CardHeader>
-                                <CardContent className="flex-1 overflow-y-auto px-2 space-y-2">
+                                <CardContent className="flex-1 overflow-y-auto p-2.5 space-y-2">
                                     {unscheduledTasks.map(task => (
                                         <div
                                             key={task.id}
-                                            className="p-3 bg-background rounded-lg border border-primary/5 hover:border-primary/30 cursor-pointer transition-all hover:shadow-md group shadow-sm"
+                                            className="p-3 bg-background/60 backdrop-blur-sm rounded-xl border border-transparent hover:border-primary/20 cursor-pointer transition-all hover:shadow-md group shadow-sm active:scale-[0.98]"
                                             onClick={() => handleScheduleUnscheduled(task)}
                                         >
-                                            <div className="flex items-start justify-between gap-2">
-                                                <h4 className="text-sm font-medium leading-tight group-hover:text-primary transition-colors">{task.title}</h4>
+                                            <div className="flex items-start justify-between gap-2 mb-2">
+                                                <h4 className="text-xs font-bold leading-tight group-hover:text-primary transition-colors line-clamp-1">{task.title}</h4>
                                                 <div className={cn(
-                                                    "h-2 w-2 rounded-full mt-1 shrink-0",
-                                                    task.priority === 'high' ? 'bg-red-500' : task.priority === 'medium' ? 'bg-yellow-500' : 'bg-blue-500'
+                                                    "h-1.5 w-1.5 rounded-full mt-1 shrink-0 shadow-[0_0_6px_currentColor]",
+                                                    task.priority === 'high' ? 'text-red-500 bg-red-500' : task.priority === 'medium' ? 'text-yellow-500 bg-yellow-500' : 'text-blue-500 bg-blue-500'
                                                 )} />
                                             </div>
-                                            <div className="flex items-center gap-2 mt-2">
-                                                <Clock className="h-3 w-3 text-muted-foreground" />
-                                                <span className="text-[10px] text-muted-foreground font-mono">
-                                                    {task.estimatedDuration || 60} min
-                                                </span>
+                                            <div className="flex items-center gap-2">
+                                                <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground">
+                                                    <Clock className="h-2.5 w-2.5" />
+                                                    <span className="text-[9px] font-black font-mono">
+                                                        {task.estimatedDuration || 60}m
+                                                    </span>
+                                                </div>
                                                 <div className="flex-1" />
-                                                <div className="opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    <Badge variant="secondary" className="text-[9px] px-1 h-4">Schedule</Badge>
+                                                <div className="opacity-0 group-hover:opacity-100 transition-all">
+                                                    <Badge variant="default" className="text-[8px] h-4 py-0 font-black uppercase tracking-widest bg-primary text-primary-foreground">Schedule</Badge>
                                                 </div>
                                             </div>
                                         </div>
                                     ))}
                                     {unscheduledTasks.length === 0 && (
-                                        <div className="text-center py-10 opacity-30">
-                                            <Sparkles className="h-10 w-10 mx-auto mb-2" />
-                                            <p className="text-xs">No tasks to show</p>
+                                        <div className="flex flex-col items-center justify-center py-20 opacity-30">
+                                            <Sparkles className="h-12 w-12 mb-4 text-primary" />
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-center">Your path is clear</p>
                                         </div>
                                     )}
                                 </CardContent>
                             </Card>
 
                             {/* Center: Timeline Grid */}
-                            <Card className="flex-1 relative overflow-hidden flex flex-col border-primary/20 shadow-xl">
-                                <div className="flex items-center justify-between p-4 border-b bg-card z-30">
-                                    <div className="flex items-center gap-4 text-xs font-medium text-muted-foreground">
-                                        <div className="flex items-center gap-1.5">
-                                            <div className="h-2 w-4 rounded bg-primary/20 border border-primary/30" />
-                                            <span>Active Workspace: {selectedProjectId === null ? 'Global' : projects.find(p => p.id === selectedProjectId)?.name || 'Personal'}</span>
+                            <Card className="flex-1 relative overflow-hidden flex flex-col bg-background/40 backdrop-blur-xl border-primary/10 shadow-xl rounded-2xl min-h-[500px]">
+                                <div className="flex flex-col sm:flex-row items-center justify-between p-3 sm:p-4 border-b bg-muted/30 backdrop-blur-md z-30 gap-2">
+                                    <div className="flex items-center gap-2">
+                                        <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-background/50 border border-primary/5 shadow-sm">
+                                            <div className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
+                                            <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground truncate max-w-[120px] sm:max-w-none">
+                                                {selectedProjectId === null ? 'Universal' : projects.find(p => p.id === selectedProjectId)?.name || 'Personal'}
+                                            </span>
                                         </div>
                                     </div>
-                                    <div className="text-xs font-mono bg-primary/5 px-2 py-1 rounded">
-                                        Daily Grid: {STEP_MINUTES}m increments
+                                    <div className="text-[8px] font-black uppercase tracking-widest bg-primary/10 text-primary px-2 py-1 rounded-lg border border-primary/10">
+                                        Grid: {STEP_MINUTES}m
                                     </div>
                                 </div>
 
                                 <div
                                     ref={scrollContainerRef}
-                                    className="flex-1 overflow-y-auto relative bg-[linear-gradient(to_bottom,transparent_79px,hsl(var(--border))_79px)] bg-[size:100%_80px]"
+                                    className="flex-1 overflow-y-auto relative bg-[linear-gradient(to_bottom,transparent_79px,hsl(var(--primary)/.05)_79px)] bg-[size:100%_80px] custom-scrollbar"
                                 >
                                     <div className="flex min-h-full">
                                         {/* Hours column */}
-                                        <div className="w-16 flex-shrink-0 bg-muted/10 border-r z-20">
+                                        <div className="w-14 sm:w-16 flex-shrink-0 bg-muted/20 border-r border-primary/5 z-20">
                                             {Array.from({ length: 24 }).map((_, i) => (
-                                                <div key={i} className="h-[80px] flex items-start justify-center pt-2">
-                                                    <span className="text-[10px] font-mono font-bold text-muted-foreground tabular-nums">
+                                                <div key={i} className="h-[60px] flex items-start justify-center pt-2">
+                                                    <span className="text-[9px] font-black font-mono text-muted-foreground tabular-nums opacity-60">
                                                         {format(setHours(new Date(), i), 'HH:00')}
                                                     </span>
                                                 </div>
@@ -246,7 +252,7 @@ export default function DayTimelinePage() {
                                             {/* Sub-hour lines (15m) */}
                                             <div className="absolute inset-0 z-0 pointer-events-none opacity-20">
                                                 {Array.from({ length: 24 * 4 }).map((_, i) => (
-                                                    <div key={i} className="h-[20px] border-b border-dashed border-muted-foreground/30" />
+                                                    <div key={i} className="h-[15px] border-b border-dashed border-primary/5" />
                                                 ))}
                                             </div>
 
@@ -357,13 +363,13 @@ function TimelineTask({
                 onMove(finalTop);
             }}
             className={cn(
-                "absolute left-4 right-8 rounded-xl border p-4 transition-shadow transition-colors group overflow-hidden bg-card",
-                isDragging && "shadow-2xl ring-2 ring-primary scale-[1.01] brightness-110 z-[100]",
-                isResizing && "shadow-xl ring-2 ring-primary bg-accent/5 z-[100]",
-                task.status === 'done' ? "opacity-50 grayscale" : "shadow-lg"
+                "absolute left-2 right-4 rounded-lg border p-2 transition-shadow transition-colors group overflow-hidden bg-card",
+                isDragging && "shadow-xl ring-2 ring-primary scale-[1.01] brightness-110 z-[100]",
+                isResizing && "shadow-lg ring-2 ring-primary bg-accent/5 z-[100]",
+                task.status === 'done' ? "opacity-50 grayscale" : "shadow-md"
             )}
             style={{
-                borderLeft: `6px solid ${projectColor || (task.priority === 'high' ? '#ef4444' : task.priority === 'medium' ? '#f59e0b' : '#3b82f6')}`
+                borderLeft: `4px solid ${projectColor || (task.priority === 'high' ? '#ef4444' : task.priority === 'medium' ? '#f59e0b' : '#3b82f6')}`
             }}
         >
             {/* Project Watermark */}
@@ -374,10 +380,10 @@ function TimelineTask({
             <div className="flex h-full relative z-10">
                 {/* Drag Handle (Left) */}
                 <div
-                    className="w-8 -ml-4 flex items-center justify-center cursor-grab active:cursor-grabbing hover:bg-primary/5 transition-colors shrink-0 group/drag"
+                    className="w-6 -ml-2 flex items-center justify-center cursor-grab active:cursor-grabbing hover:bg-primary/5 transition-colors shrink-0 group/drag"
                     onPointerDown={(e) => dragControls.start(e)}
                 >
-                    <GripVertical className="h-5 w-5 text-muted-foreground/40 group-hover/drag:text-primary transition-colors" />
+                    <GripVertical className="h-4 w-4 text-muted-foreground/40 group-hover/drag:text-primary transition-colors" />
                 </div>
 
                 {/* Content Area */}

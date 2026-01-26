@@ -36,16 +36,16 @@ const TaskCard = ({ task, onDelete, onEdit }: { task: Task; onDelete: (id: strin
 
   return (
     <div
-      ref={preview}
+      ref={(el) => { if (el) preview(el); }}
       className={`relative p-3 mb-2 bg-card rounded border ${isDragging ? 'opacity-50' : 'opacity-100'}`}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
       <div className="flex items-start gap-2">
-        <div ref={drag} className="cursor-grab active:cursor-grabbing">
+        <div ref={(el) => { if (el) drag(el); }} className="cursor-grab active:cursor-grabbing">
           <GripVertical className="h-4 w-4 text-muted-foreground" />
         </div>
-        
+
         {isEditing ? (
           <div className="flex-1 flex gap-2">
             <Input
@@ -58,14 +58,14 @@ const TaskCard = ({ task, onDelete, onEdit }: { task: Task; onDelete: (id: strin
             />
           </div>
         ) : (
-          <div 
-            className="flex-1 cursor-text" 
+          <div
+            className="flex-1 cursor-text"
             onClick={() => setIsEditing(true)}
           >
             {task.title}
           </div>
         )}
-        
+
         {(isHovered || isEditing) && (
           <Button
             variant="ghost"
@@ -117,7 +117,7 @@ const Column = ({
 
   return (
     <div
-      ref={drop}
+      ref={(el) => { if (el) drop(el); }}
       className={`flex-1 flex flex-col h-full min-h-[500px] ${isOver ? 'bg-muted/50' : ''}`}
     >
       <div className="flex items-center justify-between mb-4">
@@ -148,7 +148,7 @@ const Column = ({
             onEdit={onTaskEdit}
           />
         ))}
-        
+
         {isAdding && (
           <div className="p-2 border rounded bg-card">
             <Input

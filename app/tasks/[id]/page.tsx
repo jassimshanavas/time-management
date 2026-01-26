@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { MainLayout } from '@/components/layout/main-layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,11 +12,11 @@ import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { useStore } from '@/lib/store';
-import { 
-  ArrowLeft, 
-  Calendar as CalendarIcon, 
-  Clock, 
-  Edit, 
+import {
+  ArrowLeft,
+  Calendar as CalendarIcon,
+  Clock,
+  Edit,
   Trash2,
   Target,
   Flag,
@@ -40,7 +40,7 @@ import type { Task, TaskComment, TaskSubtask, TaskJournalEntry, TimeEntry } from
 import { ProtectedRoute } from '@/components/protected-route';
 import { DataLoader } from '@/components/data-loader';
 
-export default function TaskDetailPage() {
+function TaskDetailPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const params = useParams();
@@ -240,7 +240,7 @@ export default function TaskDetailPage() {
 
   const handleDeleteComment = async (commentId: string) => {
     if (!task) return;
-    
+
     const updatedComments = (task.comments || []).filter(c => c.id !== commentId);
     await updateTask(task.id, { comments: updatedComments });
   };
@@ -354,8 +354,8 @@ export default function TaskDetailPage() {
               <Card className="w-full max-w-md">
                 <CardContent className="p-8 text-center">
                   <p className="text-muted-foreground">Task not found</p>
-                  <Button 
-                    onClick={() => router.push('/tasks')} 
+                  <Button
+                    onClick={() => router.push('/tasks')}
                     className="mt-4"
                     variant="outline"
                   >
@@ -372,8 +372,8 @@ export default function TaskDetailPage() {
   }
 
   const linkedGoal = task.goalId ? goals.find(g => g.id === task.goalId) : null;
-  const linkedMilestone = linkedGoal && task.milestoneId 
-    ? linkedGoal.milestones.find(m => m.id === task.milestoneId) 
+  const linkedMilestone = linkedGoal && task.milestoneId
+    ? linkedGoal.milestones.find(m => m.id === task.milestoneId)
     : null;
   const totalSubtasks = task.subtasks?.length || 0;
   const completedSubtasks = task.subtasks?.filter((s) => s.done).length || 0;
@@ -419,8 +419,8 @@ export default function TaskDetailPage() {
           <div className="space-y-6 max-w-4xl mx-auto">
             {/* Header */}
             <div className="flex items-center justify-between">
-              <Button 
-                variant="ghost" 
+              <Button
+                variant="ghost"
                 onClick={() => {
                   const fromView = searchParams.get('fromView');
                   if (fromView === 'kanban' || fromView === 'timeline' || fromView === 'list') {
@@ -443,16 +443,16 @@ export default function TaskDetailPage() {
                 Back
               </Button>
               <div className="flex gap-2">
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   size="sm"
                   onClick={() => router.push(`/tasks?edit=${task.id}`)}
                 >
                   <Edit className="h-4 w-4 mr-2" />
                   Edit
                 </Button>
-                <Button 
-                  variant="destructive" 
+                <Button
+                  variant="destructive"
                   size="sm"
                   onClick={handleDelete}
                 >
@@ -461,6 +461,17 @@ export default function TaskDetailPage() {
                 </Button>
               </div>
             </div>
+
+            {/* Cover Image */}
+            {task.coverImage && (
+              <div className="w-full h-64 md:h-80 overflow-hidden rounded-2xl shadow-lg border border-border/50">
+                <img
+                  src={task.coverImage}
+                  alt={task.title}
+                  className="w-full h-full object-cover transition-transform duration-500 hover:scale-105"
+                />
+              </div>
+            )}
 
             {/* Main Task Card */}
             <Card className={`border-l-4 ${getPriorityColor()}`}>
@@ -476,8 +487,8 @@ export default function TaskDetailPage() {
                             task.priority === 'high'
                               ? 'destructive'
                               : task.priority === 'medium'
-                              ? 'default'
-                              : 'secondary'
+                                ? 'default'
+                                : 'secondary'
                           }
                         >
                           <Flag className="h-3 w-3 mr-1" />
@@ -488,8 +499,8 @@ export default function TaskDetailPage() {
                             task.status === 'done'
                               ? 'default'
                               : task.status === 'in-progress'
-                              ? 'secondary'
-                              : 'outline'
+                                ? 'secondary'
+                                : 'outline'
                           }
                         >
                           {task.status === 'done' ? 'Completed' : task.status === 'in-progress' ? 'In Progress' : 'To Do'}
@@ -629,7 +640,7 @@ export default function TaskDetailPage() {
                               )}
                               <div className="flex items-center gap-2">
                                 <div className="flex-1 bg-background rounded-full h-2 overflow-hidden">
-                                  <div 
+                                  <div
                                     className="h-full bg-primary transition-all"
                                     style={{ width: `${linkedGoal.progress}%` }}
                                   />
@@ -695,8 +706,8 @@ export default function TaskDetailPage() {
                     </CardTitle>
                   </div>
                   {!isAddingSubtask && (
-                    <Button 
-                      size="sm" 
+                    <Button
+                      size="sm"
                       variant="outline"
                       onClick={() => setIsAddingSubtask(true)}
                     >
@@ -738,8 +749,8 @@ export default function TaskDetailPage() {
                 {task.subtasks && task.subtasks.length > 0 ? (
                   <div className="space-y-2">
                     {task.subtasks.map((subtask) => (
-                      <div 
-                        key={subtask.id} 
+                      <div
+                        key={subtask.id}
                         className="flex items-center justify-between gap-3 p-2 border rounded-md bg-card"
                       >
                         <div className="flex items-center gap-2">
@@ -797,7 +808,7 @@ export default function TaskDetailPage() {
                           <div>
                             <p className="text-sm font-medium">{other.title}</p>
                             <p className="text-xs text-muted-foreground">
-                              {other.status} 
+                              {other.status}
                               <span className="mx-1">•</span>
                               {other.priority}
                             </p>
@@ -829,8 +840,8 @@ export default function TaskDetailPage() {
                     </CardTitle>
                   </div>
                   {!isAddingComment && (
-                    <Button 
-                      size="sm" 
+                    <Button
+                      size="sm"
                       variant="outline"
                       onClick={() => setIsAddingComment(true)}
                     >
@@ -878,8 +889,8 @@ export default function TaskDetailPage() {
                 {task.comments && task.comments.length > 0 ? (
                   <div className="space-y-4">
                     {[...task.comments].reverse().map((comment) => (
-                      <div 
-                        key={comment.id} 
+                      <div
+                        key={comment.id}
                         className="group relative p-4 border rounded-lg bg-card hover:bg-accent/30 transition-colors"
                       >
                         <div className="flex items-start justify-between gap-3">
@@ -931,8 +942,8 @@ export default function TaskDetailPage() {
                     </CardTitle>
                   </div>
                   {!isAddingJournal && (
-                    <Button 
-                      size="sm" 
+                    <Button
+                      size="sm"
                       variant="outline"
                       onClick={() => setIsAddingJournal(true)}
                     >
@@ -983,8 +994,8 @@ export default function TaskDetailPage() {
                       )
                       .reverse()
                       .map((entry) => (
-                        <div 
-                          key={entry.id} 
+                        <div
+                          key={entry.id}
                           className="group relative p-4 border rounded-lg bg-card hover:bg-accent/30 transition-colors"
                         >
                           <div className="flex items-start justify-between gap-3">
@@ -1041,20 +1052,20 @@ export default function TaskDetailPage() {
                       </p>
                     </div>
                   </div>
-                  {task.updatedAt && toDate(task.updatedAt) && toDate(task.createdAt) && 
-                   toDate(task.updatedAt)!.getTime() !== toDate(task.createdAt)!.getTime() && (
-                    <div className="flex gap-3">
-                      <div className="flex flex-col items-center">
-                        <div className="w-2 h-2 rounded-full bg-muted-foreground" />
+                  {task.updatedAt && toDate(task.updatedAt) && toDate(task.createdAt) &&
+                    toDate(task.updatedAt)!.getTime() !== toDate(task.createdAt)!.getTime() && (
+                      <div className="flex gap-3">
+                        <div className="flex flex-col items-center">
+                          <div className="w-2 h-2 rounded-full bg-muted-foreground" />
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-sm font-medium">Task updated</p>
+                          <p className="text-xs text-muted-foreground">
+                            {format(toDate(task.updatedAt)!, 'MMMM d, yyyy \'at\' h:mm a')}
+                          </p>
+                        </div>
                       </div>
-                      <div className="flex-1">
-                        <p className="text-sm font-medium">Task updated</p>
-                        <p className="text-xs text-muted-foreground">
-                          {format(toDate(task.updatedAt)!, 'MMMM d, yyyy \'at\' h:mm a')}
-                        </p>
-                      </div>
-                    </div>
-                  )}
+                    )}
                 </div>
               </CardContent>
             </Card>
@@ -1062,5 +1073,19 @@ export default function TaskDetailPage() {
         </MainLayout>
       </DataLoader>
     </ProtectedRoute>
+  );
+}
+
+export default function TaskDetailPage() {
+  return (
+    <Suspense fallback={
+      <MainLayout>
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <p className="text-muted-foreground animate-pulse">Syncing task details...</p>
+        </div>
+      </MainLayout>
+    }>
+      <TaskDetailPageContent />
+    </Suspense>
   );
 }

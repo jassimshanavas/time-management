@@ -53,72 +53,78 @@ import { Toaster } from 'sonner';
 
 // Custom Node Component with Handles
 const TaskNode = ({ data, isConnectable }: { data: any; isConnectable: boolean }) => {
-    const getStatusColor = (status: string) => {
+    const getStatusStyles = (status: string) => {
         switch (status) {
-            case 'done': return 'border-green-500 bg-green-50 dark:bg-green-950/20';
-            case 'in-progress': return 'border-blue-500 bg-blue-50 dark:bg-blue-950/20';
-            default: return 'border-gray-300 bg-white dark:bg-gray-950';
+            case 'done': return 'border-emerald-500/50 bg-emerald-500/5';
+            case 'in-progress': return 'border-blue-500/50 bg-blue-500/5';
+            default: return 'border-primary/5 bg-background/40';
         }
     };
 
-    const getPriorityDot = (priority: string) => {
+    const getPriorityColor = (priority: string) => {
         switch (priority) {
-            case 'high': return 'bg-red-500';
-            case 'medium': return 'bg-yellow-500';
-            default: return 'bg-gray-400';
+            case 'high': return 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.4)]';
+            case 'medium': return 'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.4)]';
+            default: return 'bg-slate-400';
         }
     };
 
     return (
-        <div className={`group px-4 py-3 shadow-lg rounded-lg border-2 ${getStatusColor(data.status)} min-w-[200px] max-w-[300px] relative`}>
-            {/* Connection Handles - These create the connection points */}
-            <Handle
-                type="target"
-                position={Position.Top}
-                id="top"
-                isConnectable={isConnectable}
-                className="!w-3 !h-3 !bg-blue-500 !border-2 !border-white hover:!w-4 hover:!h-4 transition-all"
-            />
-            <Handle
-                type="source"
-                position={Position.Right}
-                id="right"
-                isConnectable={isConnectable}
-                className="!w-3 !h-3 !bg-purple-500 !border-2 !border-white hover:!w-4 hover:!h-4 transition-all"
-            />
-            <Handle
-                type="target"
-                position={Position.Left}
-                id="left"
-                isConnectable={isConnectable}
-                className="!w-3 !h-3 !bg-blue-500 !border-2 !border-white hover:!w-4 hover:!h-4 transition-all"
-            />
-            <Handle
-                type="source"
-                position={Position.Bottom}
-                id="bottom"
-                isConnectable={isConnectable}
-                className="!w-3 !h-3 !bg-purple-500 !border-2 !border-white hover:!w-4 hover:!h-4 transition-all"
-            />
-
-            <div className="flex items-start justify-between gap-2 mb-2">
-                <div className="flex items-center gap-2">
-                    {data.type === 'task' && <CheckSquare className="h-4 w-4" />}
-                    {data.type === 'goal' && <Target className="h-4 w-4" />}
-                    {data.type === 'idea' && <Sparkles className="h-4 w-4" />}
-                    <Badge variant="outline" className="text-xs">{data.type}</Badge>
+        <div className={`group backdrop-blur-xl rounded-xl border ${getStatusStyles(data.status)} min-w-[160px] max-w-[240px] shadow-xl transition-all hover:border-primary/30`}>
+            {data.coverImage && (
+                <div className="w-full h-16 overflow-hidden rounded-t-xl border-b border-primary/5">
+                    <img src={data.coverImage} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" alt="" />
                 </div>
-                <div className={`h-2 w-2 rounded-full ${getPriorityDot(data.priority)}`} />
+            )}
+            <div className="p-2.5">
+                <Handle
+                    type="target"
+                    position={Position.Top}
+                    id="top"
+                    isConnectable={isConnectable}
+                    className="!w-3 !h-3 !bg-blue-500 !border-2 !border-background hover:!scale-125 transition-transform"
+                />
+                <Handle
+                    type="source"
+                    position={Position.Right}
+                    id="right"
+                    isConnectable={isConnectable}
+                    className="!w-3 !h-3 !bg-purple-500 !border-2 !border-background hover:!scale-125 transition-transform"
+                />
+                <Handle
+                    type="target"
+                    position={Position.Left}
+                    id="left"
+                    isConnectable={isConnectable}
+                    className="!w-3 !h-3 !bg-blue-500 !border-2 !border-background hover:!scale-125 transition-transform"
+                />
+                <Handle
+                    type="source"
+                    position={Position.Bottom}
+                    id="bottom"
+                    isConnectable={isConnectable}
+                    className="!w-3 !h-3 !bg-purple-500 !border-2 !border-background hover:!scale-125 transition-transform"
+                />
+
+                <div className="flex items-center justify-between gap-2 mb-2">
+                    <div className="flex items-center gap-1.5">
+                        {data.type === 'task' && <CheckSquare className="h-3.5 w-3.5 text-primary" />}
+                        {data.type === 'goal' && <Target className="h-3.5 w-3.5 text-emerald-500" />}
+                        {data.type === 'idea' && <Sparkles className="h-3.5 w-3.5 text-amber-500" />}
+                        <Badge variant="outline" className="text-[8px] font-black uppercase tracking-widest bg-primary/5 border-transparent shadow-sm px-1 h-4">{data.type}</Badge>
+                    </div>
+                    <div className={`h-1.5 w-1.5 rounded-full ${getPriorityColor(data.priority)}`} />
+                </div>
+                <div className="font-black text-xs tracking-tight mb-1 group-hover:text-primary transition-colors line-clamp-1">{data.label}</div>
+                {data.description && (
+                    <div className="text-[10px] font-medium text-muted-foreground/70 line-clamp-1 leading-tight">{data.description}</div>
+                )}
+                {data.status && (
+                    <Badge variant="secondary" className="mt-2 text-[8px] h-4 py-0 font-black uppercase tracking-widest bg-background/50">
+                        {data.status}
+                    </Badge>
+                )}
             </div>
-            <div className="font-semibold text-sm mb-1">{data.label}</div>
-            {data.description && (
-                <div className="text-xs text-muted-foreground line-clamp-2">{data.description}</div>
-            )}
-            {data.status && (
-                <Badge variant="secondary" className="mt-2 text-xs">
-                    {data.status}
-                </Badge>
-            )}
         </div>
     );
 };
@@ -132,7 +138,7 @@ export default function BoardPage() {
     const [nodes, setNodes, onNodesChange] = useNodesState([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState([]);
     const [isDialogOpen, setIsDialogOpen] = useState(false);
-    const [panOnDrag, setPanOnDrag] = useState(true); // Toggle for interaction mode
+    const [panOnDrag, setPanOnDrag] = useState(true);
     const [newNode, setNewNode] = useState({
         label: '',
         description: '',
@@ -141,7 +147,6 @@ export default function BoardPage() {
         status: 'todo' as 'todo' | 'in-progress' | 'done',
     });
 
-    // Initialize with existing tasks and goals
     const loadFromData = useCallback(() => {
         const filterByWorkspace = <T extends { projectId?: string }>(items: T[]) => {
             if (selectedProjectId === null) return items;
@@ -163,6 +168,7 @@ export default function BoardPage() {
                 status: task.status,
                 priority: task.priority,
                 taskId: task.id,
+                coverImage: task.coverImage,
             },
         }));
 
@@ -180,12 +186,10 @@ export default function BoardPage() {
             },
         }));
 
-        // Create edges from existing dependencies
         const taskEdges: Edge[] = [];
         filteredTasks.forEach((task) => {
             if (task.dependencyIds && task.dependencyIds.length > 0) {
                 task.dependencyIds.forEach((depId) => {
-                    // Only add edge if source node also exists in filtered tasks
                     if (filteredTasks.some(t => t.id === depId)) {
                         taskEdges.push({
                             id: `e-${depId}-${task.id}`,
@@ -202,7 +206,7 @@ export default function BoardPage() {
 
         setNodes([...taskNodes, ...goalNodes]);
         setEdges(taskEdges);
-        toast.success(`Loaded ${taskNodes.length} tasks and ${goalNodes.length} goals from current workspace`);
+        toast.success(`Infrastructure synchronized`);
     }, [tasks, goals, selectedProjectId, setNodes, setEdges]);
 
     const onConnect = useCallback(
@@ -231,10 +235,9 @@ export default function BoardPage() {
                         });
                         toast.success(
                             <div>
-                                <div className="font-semibold">Dependency Created!</div>
-                                <div className="text-xs">{sourceNode.data.label} → {targetNode.data.label}</div>
-                            </div>,
-                            { duration: 3000 }
+                                <div className="font-black uppercase tracking-widest text-[10px]">Neural Link Established</div>
+                                <div className="text-xs font-medium opacity-70">{sourceNode.data.label} → {targetNode.data.label}</div>
+                            </div>
                         );
                     }
                 }
@@ -245,7 +248,7 @@ export default function BoardPage() {
 
     const addNewNode = useCallback(() => {
         if (!newNode.label.trim()) {
-            toast.error('Please enter a title');
+            toast.error('Title required');
             return;
         }
         const newId = `node-${Date.now()}`;
@@ -270,14 +273,14 @@ export default function BoardPage() {
             status: 'todo',
         });
         setIsDialogOpen(false);
-        toast.success('Node added to board!');
+        toast.success('Card materialized on board');
     }, [newNode, setNodes]);
 
     const clearBoard = useCallback(() => {
-        if (window.confirm('Clear the entire board? Your tasks won\'t be deleted.')) {
+        if (window.confirm('Dissolve the entire board? Historical data remains safe.')) {
             setNodes([]);
             setEdges([]);
-            toast.success('Board cleared');
+            toast.success('Canvas reset');
         }
     }, [setNodes, setEdges]);
 
@@ -288,9 +291,9 @@ export default function BoardPage() {
         const url = URL.createObjectURL(dataBlob);
         const link = document.createElement('a');
         link.href = url;
-        link.download = `timeflow-board-${Date.now()}.json`;
+        link.download = `neural-board-${Date.now()}.json`;
         link.click();
-        toast.success('Board exported!');
+        toast.success('Neuro-mapping exported');
     }, [nodes, edges]);
 
     const dependencyCount = useMemo(() => {
@@ -302,120 +305,120 @@ export default function BoardPage() {
             <DataLoader>
                 <MainLayout>
                     <Toaster position="top-right" richColors />
-                    <div className="h-[calc(100vh-120px)] flex flex-col">
-                        <div className="mb-4">
-                            <div className="flex items-center justify-between">
+                    <div className="h-full flex flex-col bg-background/50 animate-in fade-in duration-700">
+                        <div className="mb-6 p-4 sm:p-0">
+                            <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
                                 <div>
-                                    <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
-                                        <Sparkles className="h-8 w-8 text-purple-500" />
-                                        Visual Board
+                                    <h1 className="text-2xl sm:text-3xl font-black tracking-tight flex items-center gap-2 bg-gradient-to-r from-foreground to-foreground/60 bg-clip-text text-transparent">
+                                        <Sparkles className="h-6 w-6 text-primary" />
+                                        Visual Architect
                                     </h1>
-                                    <p className="text-muted-foreground">Drag nodes and create connections</p>
+                                    <p className="text-[10px] text-muted-foreground font-medium mt-0.5">Map your strategic dependencies and neural flows</p>
                                 </div>
-                                <div className="flex items-center gap-2">
+                                <div className="flex flex-wrap items-center gap-2">
                                     {selectedProjectId && (
-                                        <Badge variant="outline" className="h-9 px-4 hidden md:flex items-center gap-2 mr-2">
-                                            <span className="text-muted-foreground mr-1">Workspace:</span>
+                                        <Badge variant="outline" className="h-8 px-3 flex items-center gap-1.5 bg-background/40 backdrop-blur-sm border-primary/10 text-[10px] font-bold">
+                                            <span className="text-muted-foreground hidden sm:inline">Context:</span>
                                             {selectedProjectId === 'personal' ? 'Personal' : projects.find(p => p.id === selectedProjectId)?.name}
                                         </Badge>
                                     )}
-                                    {/* Mode Toggle */}
-                                    <div className="flex items-center gap-1 bg-muted p-1 rounded-lg">
+                                    <div className="flex items-center gap-1 bg-muted/40 backdrop-blur-sm p-1 rounded-xl border border-primary/5 shadow-lg">
                                         <Button
                                             size="sm"
                                             variant={panOnDrag ? 'default' : 'ghost'}
                                             onClick={() => setPanOnDrag(true)}
-                                            className="gap-2"
+                                            className="h-8 px-3 rounded-lg font-bold gap-1.5 text-xs"
                                         >
-                                            <Hand className="h-4 w-4" />
-                                            Pan
+                                            <Hand className="h-3.5 w-3.5" />
+                                            <span className="hidden sm:inline">Navigate</span>
                                         </Button>
                                         <Button
                                             size="sm"
                                             variant={!panOnDrag ? 'default' : 'ghost'}
                                             onClick={() => setPanOnDrag(false)}
-                                            className="gap-2"
+                                            className="h-8 px-3 rounded-lg font-bold gap-1.5 text-xs"
                                         >
-                                            <MousePointer className="h-4 w-4" />
-                                            Select
+                                            <MousePointer className="h-3.5 w-3.5" />
+                                            <span className="hidden sm:inline">Connect</span>
                                         </Button>
                                     </div>
-                                    <Button variant="outline" size="sm" onClick={loadFromData}>
-                                        <RefreshCw className="h-4 w-4 mr-2" />
-                                        Load
-                                    </Button>
-                                    <Button variant="outline" size="sm" onClick={saveBoard}>
-                                        <Download className="h-4 w-4 mr-2" />
-                                        Export
-                                    </Button>
-                                    <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                                        <DialogTrigger asChild>
-                                            <Button size="sm">
-                                                <Plus className="h-4 w-4 mr-2" />
-                                                Add
-                                            </Button>
-                                        </DialogTrigger>
-                                        <DialogContent>
-                                            <DialogHeader>
-                                                <DialogTitle>Add New Node</DialogTitle>
-                                                <DialogDescription>Create a card on your board</DialogDescription>
-                                            </DialogHeader>
-                                            <div className="space-y-4">
-                                                <div>
-                                                    <Label>Title</Label>
-                                                    <Input
-                                                        value={newNode.label}
-                                                        onChange={(e) => setNewNode({ ...newNode, label: e.target.value })}
-                                                        placeholder="What's this about?"
-                                                    />
-                                                </div>
-                                                <div>
-                                                    <Label>Description</Label>
-                                                    <Textarea
-                                                        value={newNode.description}
-                                                        onChange={(e) => setNewNode({ ...newNode, description: e.target.value })}
-                                                        placeholder="Add details..."
-                                                    />
-                                                </div>
-                                                <div className="grid grid-cols-2 gap-4">
-                                                    <div>
-                                                        <Label>Type</Label>
-                                                        <select
-                                                            className="w-full p-2 border rounded-md"
-                                                            value={newNode.type}
-                                                            onChange={(e) => setNewNode({ ...newNode, type: e.target.value as any })}
-                                                        >
-                                                            <option value="idea">Idea</option>
-                                                            <option value="task">Task</option>
-                                                            <option value="goal">Goal</option>
-                                                        </select>
+                                    <div className="flex items-center gap-1.5 w-full sm:w-auto">
+                                        <Button variant="outline" size="icon" className="h-8 w-8 rounded-lg bg-background/50 backdrop-blur-sm shadow-md shrink-0" onClick={loadFromData}>
+                                            <RefreshCw className="h-3.5 w-3.5" />
+                                        </Button>
+                                        <Button variant="outline" size="icon" className="h-8 w-8 rounded-lg bg-background/50 backdrop-blur-sm shadow-md shrink-0" onClick={saveBoard}>
+                                            <Download className="h-3.5 w-3.5" />
+                                        </Button>
+                                        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                                            <DialogTrigger asChild>
+                                                <Button className="h-8 flex-1 sm:px-4 rounded-lg shadow-md shadow-primary/10 bg-primary font-black text-xs">
+                                                    <Plus className="h-4 w-4 mr-1.5" />
+                                                    Add
+                                                </Button>
+                                            </DialogTrigger>
+                                            <DialogContent className="max-w-[400px] rounded-3xl">
+                                                <DialogHeader>
+                                                    <DialogTitle className="text-xl font-black tracking-tight">Project Card</DialogTitle>
+                                                    <DialogDescription>Infuse new data into the neural board</DialogDescription>
+                                                </DialogHeader>
+                                                <div className="space-y-4 pt-4">
+                                                    <div className="space-y-2">
+                                                        <Label className="font-bold">Title</Label>
+                                                        <Input
+                                                            value={newNode.label}
+                                                            onChange={(e) => setNewNode({ ...newNode, label: e.target.value })}
+                                                            placeholder="Core objective..."
+                                                            className="h-11 rounded-xl bg-muted/30"
+                                                        />
                                                     </div>
-                                                    <div>
-                                                        <Label>Priority</Label>
-                                                        <select
-                                                            className="w-full p-2 border rounded-md"
-                                                            value={newNode.priority}
-                                                            onChange={(e) => setNewNode({ ...newNode, priority: e.target.value as any })}
-                                                        >
-                                                            <option value="low">Low</option>
-                                                            <option value="medium">Medium</option>
-                                                            <option value="high">High</option>
-                                                        </select>
+                                                    <div className="space-y-2">
+                                                        <Label className="font-bold">Telemetry</Label>
+                                                        <Textarea
+                                                            value={newNode.description}
+                                                            onChange={(e) => setNewNode({ ...newNode, description: e.target.value })}
+                                                            placeholder="Add nuance..."
+                                                            className="rounded-xl bg-muted/30 min-h-[100px]"
+                                                        />
                                                     </div>
+                                                    <div className="grid grid-cols-2 gap-4">
+                                                        <div className="space-y-2">
+                                                            <Label className="font-bold text-xs uppercase tracking-widest text-muted-foreground">Type</Label>
+                                                            <select
+                                                                className="w-full h-10 px-3 border-transparent rounded-xl bg-muted/50 text-sm font-bold focus:ring-2 focus:ring-primary/20 outline-none"
+                                                                value={newNode.type}
+                                                                onChange={(e) => setNewNode({ ...newNode, type: e.target.value as any })}
+                                                            >
+                                                                <option value="idea">Idea</option>
+                                                                <option value="task">Task</option>
+                                                                <option value="goal">Goal</option>
+                                                            </select>
+                                                        </div>
+                                                        <div className="space-y-2">
+                                                            <Label className="font-bold text-xs uppercase tracking-widest text-muted-foreground">Priority</Label>
+                                                            <select
+                                                                className="w-full h-10 px-3 border-transparent rounded-xl bg-muted/50 text-sm font-bold focus:ring-2 focus:ring-primary/20 outline-none"
+                                                                value={newNode.priority}
+                                                                onChange={(e) => setNewNode({ ...newNode, priority: e.target.value as any })}
+                                                            >
+                                                                <option value="low">Standard</option>
+                                                                <option value="medium">Medium</option>
+                                                                <option value="high">Critical</option>
+                                                            </select>
+                                                        </div>
+                                                    </div>
+                                                    <Button onClick={addNewNode} className="w-full h-12 rounded-2xl font-black shadow-lg shadow-primary/20">Instantiate Card</Button>
                                                 </div>
-                                                <Button onClick={addNewNode} className="w-full">Create</Button>
-                                            </div>
-                                        </DialogContent>
-                                    </Dialog>
-                                    <Button variant="destructive" size="sm" onClick={clearBoard}>
-                                        <Trash2 className="h-4 w-4 mr-2" />
-                                        Clear
-                                    </Button>
+                                            </DialogContent>
+                                        </Dialog>
+                                        <Button variant="outline" size="icon" className="h-8 w-8 rounded-lg bg-destructive/5 hover:bg-destructive/10 text-destructive border-destructive/10 shrink-0" onClick={clearBoard}>
+                                            <Trash2 className="h-3.5 w-3.5" />
+                                        </Button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
 
-                        <Card className="flex-1 overflow-hidden">
+                        <Card className="flex-1 overflow-hidden relative bg-background/40 backdrop-blur-xl border-primary/5 shadow-2xl rounded-3xl border-2">
                             <ReactFlow
                                 nodes={nodes}
                                 edges={edges}
@@ -430,65 +433,84 @@ export default function BoardPage() {
                                 defaultEdgeOptions={{
                                     type: 'smoothstep',
                                     animated: true,
-                                    style: { stroke: '#8b5cf6', strokeWidth: 3 },
+                                    style: { stroke: 'hsl(var(--primary))', strokeWidth: 3, opacity: 0.6 },
                                 }}
                             >
-                                <Background variant={BackgroundVariant.Dots} gap={20} size={1} />
-                                <Controls showInteractive={false} />
-                                <MiniMap nodeStrokeWidth={3} zoomable pannable className="bg-background border rounded-lg" />
+                                <Background variant={BackgroundVariant.Dots} gap={30} size={1} color="hsl(var(--primary)/.1)" />
+                                <Controls
+                                    showInteractive={false}
+                                    className="bg-background/80 backdrop-blur-md border-primary/10 rounded-xl overflow-hidden shadow-2xl !left-auto !right-4 !bottom-4 !flex !flex-row"
+                                />
+                                <MiniMap
+                                    nodeStrokeWidth={3}
+                                    zoomable
+                                    pannable
+                                    className="!bg-background/80 !backdrop-blur-md !border-primary/10 !rounded-2xl !shadow-2xl !right-4 !top-4 !left-auto !w-48 !h-32"
+                                />
 
-                                <Panel position="top-left" className="bg-background/95 backdrop-blur-sm p-4 rounded-lg border space-y-2">
-                                    <div className="text-sm font-semibold flex items-center gap-2">
-                                        {panOnDrag ? <Hand className="h-4 w-4" /> : <MousePointer className="h-4 w-4" />}
-                                        {panOnDrag ? 'Pan Mode' : 'Select Mode'}
+                                <Panel position="top-left" className="bg-background/80 backdrop-blur-xl p-6 rounded-3xl border border-primary/10 shadow-2xl space-y-4 max-w-[240px] hidden sm:block">
+                                    <div className="text-xs font-black uppercase tracking-widest flex items-center gap-2 text-primary">
+                                        {panOnDrag ? <Zap className="h-4 w-4" /> : <MousePointer className="h-4 w-4" />}
+                                        {panOnDrag ? 'Flow Active' : 'Neural Linker'}
                                     </div>
-                                    <div className="text-xs space-y-1 text-muted-foreground">
+                                    <div className="space-y-3 leading-tight">
                                         {panOnDrag ? (
-                                            <>
-                                                <div>• Drag background to pan</div>
-                                                <div>• Click "Select" mode to connect</div>
-                                            </>
+                                            <div className="text-[10px] font-medium text-muted-foreground/80 space-y-1">
+                                                <p>• Transverse the board</p>
+                                                <p>• Observe global architectures</p>
+                                                <p>• Switch to <span className="text-primary font-bold">Connect</span> to link</p>
+                                            </div>
                                         ) : (
-                                            <>
-                                                <div>• Drag nodes to move</div>
-                                                <div>• Drag from colored dots to connect</div>
-                                                <div>• Blue dots = receive connections</div>
-                                                <div>• Purple dots = send connections</div>
-                                            </>
+                                            <div className="text-[10px] font-medium text-muted-foreground/80 space-y-1">
+                                                <p>• Bridge nodes via handles</p>
+                                                <p>• Blue = Synaptic Input</p>
+                                                <p>• Purple = Synaptic Output</p>
+                                            </div>
                                         )}
                                     </div>
-                                    <div className="pt-2 space-y-1 border-t">
-                                        <div className="flex items-center gap-2 text-xs">
-                                            <div className="h-2 w-2 rounded-full bg-red-500" />
-                                            High Priority
+                                    <div className="pt-4 space-y-2 border-t border-primary/5">
+                                        <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-tighter">
+                                            <div className="h-2 w-2 rounded-full bg-rose-500 animate-pulse" />
+                                            Critical Objectives
                                         </div>
-                                        <div className="flex items-center gap-2 text-xs">
-                                            <div className="h-2 w-2 rounded-full bg-yellow-500" />
-                                            Medium
+                                        <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-tighter">
+                                            <div className="h-2 w-2 rounded-full bg-amber-500" />
+                                            Secondary Phase
                                         </div>
                                     </div>
                                 </Panel>
 
-                                <Panel position="bottom-right" className="bg-primary/10 backdrop-blur-sm p-3 rounded-lg border">
-                                    <div className="text-xs font-semibold text-primary">Dependencies</div>
-                                    <div className="text-2xl font-bold text-primary">{dependencyCount}</div>
-                                    <div className="text-xs text-muted-foreground">saved</div>
+                                <Panel position="bottom-left" className="bg-background/80 backdrop-blur-xl p-4 px-6 rounded-full border border-primary/10 shadow-2xl flex items-center gap-6">
+                                    <div className="flex flex-col">
+                                        <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Neurons</span>
+                                        <span className="text-xl font-black tabular-nums">{nodes.length}</span>
+                                    </div>
+                                    <div className="h-6 w-px bg-primary/10" />
+                                    <div className="flex flex-col">
+                                        <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Synapses</span>
+                                        <span className="text-xl font-black tabular-nums">{edges.length}</span>
+                                    </div>
+                                    <div className="h-6 w-px bg-primary/10" />
+                                    <div className="flex flex-col">
+                                        <span className="text-[9px] font-black uppercase tracking-widest text-primary/80">Links</span>
+                                        <span className="text-xl font-black tabular-nums text-primary">{dependencyCount}</span>
+                                    </div>
                                 </Panel>
                             </ReactFlow>
                         </Card>
 
-                        <div className="mt-4 flex items-center gap-4">
-                            <Badge variant="secondary">
-                                <Circle className="h-3 w-3 mr-1" />
+                        <div className="mt-4 flex flex-wrap items-center gap-2">
+                            <Badge variant="secondary" className="pl-1.5 pr-2.5 h-7 rounded-full bg-background/50 backdrop-blur-sm border-primary/5 font-black text-[8px] uppercase tracking-widest gap-1.5">
+                                <div className="h-1 w-1 rounded-full bg-slate-400" />
                                 {nodes.length} Nodes
                             </Badge>
-                            <Badge variant="secondary">
-                                <Zap className="h-3 w-3 mr-1" />
-                                {edges.length} Connections
+                            <Badge variant="secondary" className="pl-1.5 pr-2.5 h-7 rounded-full bg-background/50 backdrop-blur-sm border-primary/5 font-black text-[8px] uppercase tracking-widest gap-1.5">
+                                <div className="h-1 w-1 rounded-full bg-blue-500 animate-pulse" />
+                                {edges.length} Synapses
                             </Badge>
-                            <Badge variant="default">
-                                <CheckSquare className="h-3 w-3 mr-1" />
-                                {dependencyCount} Dependencies
+                            <Badge className="pl-1.5 pr-2.5 h-7 rounded-full bg-primary/10 text-primary border-primary/5 font-black text-[8px] uppercase tracking-widest gap-1.5">
+                                <div className="h-1 w-1 rounded-full bg-primary" />
+                                {dependencyCount} Links
                             </Badge>
                         </div>
                     </div>

@@ -104,194 +104,196 @@ export default function ProjectPage() {
         <ProtectedRoute>
             <DataLoader>
                 <MainLayout>
-                    <div className="flex flex-col h-full bg-background overflow-hidden animate-in fade-in duration-500">
+                    <div className="flex flex-col h-full bg-background/50 animate-in fade-in duration-700">
                         {/* Project Header */}
-                        <header className="p-6 border-b space-y-6">
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-4">
+                        <header className="p-4 sm:p-8 space-y-6">
+                            <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
+                                <div className="flex items-center gap-4 min-w-0">
                                     <Button
                                         variant="ghost"
                                         size="icon"
                                         onClick={() => router.back()}
-                                        className="shrink-0"
+                                        className="shrink-0 rounded-full hover:bg-background/80"
                                     >
                                         <ArrowLeft className="h-5 w-5" />
                                     </Button>
-                                    <h1 className="text-3xl font-bold flex items-center gap-3">
-                                        {project.emoji && <span>{project.emoji}</span>}
-                                        {project.name}
-                                    </h1>
+                                    <div className="min-w-0">
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <Badge variant="outline" className="bg-primary/5 border-primary/20 text-primary uppercase text-[10px] font-black tracking-widest">Workspace</Badge>
+                                        </div>
+                                        <h1 className="text-3xl sm:text-4xl font-black flex items-center gap-3 truncate bg-gradient-to-r from-foreground to-foreground/60 bg-clip-text text-transparent">
+                                            {project.emoji && <span className="drop-shadow-sm">{project.emoji}</span>}
+                                            {project.name}
+                                        </h1>
+                                    </div>
                                 </div>
-                                <div className="flex items-center gap-3">
-                                    <div className="relative group">
-                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                                <div className="flex items-center gap-2 w-full sm:w-auto">
+                                    <div className="relative group flex-1 sm:flex-initial">
+                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground transition-colors group-focus-within:text-primary" />
                                         <input
                                             type="text"
-                                            placeholder="Search..."
-                                            className="pl-10 pr-4 py-2 bg-secondary/50 border rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 w-64"
+                                            placeholder="Find anything..."
+                                            className="pl-10 pr-4 py-2 bg-background/50 backdrop-blur-sm border-primary/10 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 w-full sm:w-64 transition-all"
                                         />
                                     </div>
-                                    <Button variant="outline" size="sm">
-                                        <Edit className="h-4 w-4 mr-2" />
-                                        Edit
+                                    <Button variant="outline" size="icon" className="rounded-full h-10 w-10 bg-background/50" onClick={() => { }}>
+                                        <Edit className="h-4 w-4" />
                                     </Button>
-                                    <Button variant="outline" size="sm" onClick={handleDeleteProject}>
-                                        <Trash2 className="h-4 w-4 mr-2" />
-                                        Delete
+                                    <Button variant="outline" size="icon" className="rounded-full h-10 w-10 bg-background/50 hover:bg-destructive/10 hover:text-destructive group-hover:border-destructive/30" onClick={handleDeleteProject}>
+                                        <Trash2 className="h-4 w-4" />
                                     </Button>
                                 </div>
                             </div>
 
                             <Tabs defaultValue="overview" className="w-full">
-                                <div className="flex items-center justify-between w-full">
-                                    <TabsList className="bg-transparent border-b-0 gap-8 h-auto p-0">
-                                        <TabsTrigger value="overview" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-0 pb-2 text-base">Overview</TabsTrigger>
-                                        <TabsTrigger value="tasks" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-0 pb-2 text-base">Tasks</TabsTrigger
-                                        >
-                                        <TabsTrigger value="notes" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-0 pb-2 text-base">Notes</TabsTrigger>
-                                        <TabsTrigger value="goals" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-0 pb-2 text-base">Goals</TabsTrigger>
+                                <div className="flex flex-col sm:flex-row items-center justify-between w-full gap-4 pt-4">
+                                    <TabsList className="bg-muted/50 p-1 rounded-2xl backdrop-blur-sm border border-primary/5 self-start sm:self-auto">
+                                        <TabsTrigger value="overview" className="rounded-xl px-6 font-bold tracking-tight data-[state=active]:bg-background data-[state=active]:shadow-lg">Overview</TabsTrigger>
+                                        <TabsTrigger value="tasks" className="rounded-xl px-6 font-bold tracking-tight data-[state=active]:bg-background data-[state=active]:shadow-lg">Tasks</TabsTrigger>
+                                        <TabsTrigger value="notes" className="rounded-xl px-6 font-bold tracking-tight data-[state=active]:bg-background data-[state=active]:shadow-lg">Notes</TabsTrigger>
+                                        <TabsTrigger value="goals" className="rounded-xl px-6 font-bold tracking-tight data-[state=active]:bg-background data-[state=active]:shadow-lg">Goals</TabsTrigger>
                                     </TabsList>
 
-                                    <div className="flex items-center gap-4">
+                                    <div className="flex items-center gap-4 self-end sm:self-auto">
                                         <div className="flex -space-x-2">
                                             {[1, 2, 3].map((i) => (
-                                                <Avatar key={i} className="h-8 w-8 ring-2 ring-background">
+                                                <Avatar key={i} className="h-10 w-10 ring-4 ring-background shadow-lg">
                                                     <AvatarImage src={`https://api.dicebear.com/7.x/avataaars/svg?seed=User${i}`} />
                                                     <AvatarFallback>U{i}</AvatarFallback>
                                                 </Avatar>
                                             ))}
                                         </div>
-                                        <Button variant="outline" size="icon" className="rounded-full h-8 w-8 border-dashed">
-                                            <Plus className="h-4 w-4" />
+                                        <Button variant="outline" size="icon" className="rounded-full h-10 w-10 border-dashed hover:border-primary hover:text-primary transition-colors">
+                                            <Plus className="h-5 w-5" />
                                         </Button>
                                     </div>
                                 </div>
 
                                 {/* Overview Tab */}
-                                <TabsContent value="overview" className="mt-6 space-y-6">
+                                <TabsContent value="overview" className="mt-8 space-y-8 animate-in slide-in-from-bottom-4 duration-500">
                                     {/* Quick Stats */}
-                                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                                        <Card>
+                                    <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
+                                        <Card className="bg-background/40 backdrop-blur-xl border-primary/5 shadow-xl group hover:border-primary/20 transition-all duration-300">
                                             <CardHeader className="pb-2">
-                                                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                                                    <CheckCircle2 className="h-4 w-4 text-green-600" />
-                                                    Tasks
+                                                <CardTitle className="text-[10px] font-black uppercase tracking-widest flex items-center gap-2 text-muted-foreground">
+                                                    <CheckCircle2 className="h-4 w-4 text-green-500" />
+                                                    Tasks Pulse
                                                 </CardTitle>
                                             </CardHeader>
                                             <CardContent>
-                                                <div className="text-2xl font-bold">{totalTasks}</div>
-                                                <p className="text-xs text-muted-foreground">
-                                                    {completedTasks} completed • {inProgressTasks} in progress
+                                                <div className="text-3xl font-black text-foreground leading-none mb-2">{totalTasks}</div>
+                                                <p className="text-[10px] font-bold text-muted-foreground/60 uppercase">
+                                                    {completedTasks} Done • {inProgressTasks} Active
                                                 </p>
-                                                <Progress value={completionRate} className="mt-2 h-2" />
+                                                <Progress value={completionRate} className="mt-4 h-1.5 rounded-full bg-primary/10" />
                                             </CardContent>
                                         </Card>
 
-                                        <Card>
+                                        <Card className="bg-background/40 backdrop-blur-xl border-primary/5 shadow-xl group hover:border-primary/20 transition-all duration-300">
                                             <CardHeader className="pb-2">
-                                                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                                                    <Clock className="h-4 w-4 text-blue-600" />
-                                                    Time Tracked
+                                                <CardTitle className="text-[10px] font-black uppercase tracking-widest flex items-center gap-2 text-muted-foreground">
+                                                    <Clock className="h-4 w-4 text-blue-500" />
+                                                    Time Invested
                                                 </CardTitle>
                                             </CardHeader>
                                             <CardContent>
-                                                <div className="text-2xl font-bold">
-                                                    {totalTimeHours}h {totalTimeMinutes}m
+                                                <div className="text-3xl font-black text-foreground leading-none mb-2">
+                                                    {totalTimeHours}<span className="text-lg">h</span> {totalTimeMinutes}<span className="text-lg">m</span>
                                                 </div>
-                                                <p className="text-xs text-muted-foreground">
-                                                    {projectTimeEntries.length} sessions
+                                                <p className="text-[10px] font-bold text-muted-foreground/60 uppercase">
+                                                    Across {projectTimeEntries.length} sessions
                                                 </p>
                                             </CardContent>
                                         </Card>
 
-                                        <Card>
+                                        <Card className="bg-background/40 backdrop-blur-xl border-primary/5 shadow-xl group hover:border-primary/20 transition-all duration-300">
                                             <CardHeader className="pb-2">
-                                                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                                                    <Target className="h-4 w-4 text-emerald-600" />
-                                                    Goals
+                                                <CardTitle className="text-[10px] font-black uppercase tracking-widest flex items-center gap-2 text-muted-foreground">
+                                                    <Target className="h-4 w-4 text-emerald-500" />
+                                                    Milestones
                                                 </CardTitle>
                                             </CardHeader>
                                             <CardContent>
-                                                <div className="text-2xl font-bold">{projectGoals.length}</div>
-                                                <p className="text-xs text-muted-foreground">
-                                                    {activeGoals.length} active • {completedGoals.length} completed
+                                                <div className="text-3xl font-black text-foreground leading-none mb-2">{projectGoals.length}</div>
+                                                <p className="text-[10px] font-bold text-muted-foreground/60 uppercase">
+                                                    {activeGoals.length} Active • {completedGoals.length} Hit
                                                 </p>
                                             </CardContent>
                                         </Card>
 
-                                        <Card>
+                                        <Card className="bg-background/40 backdrop-blur-xl border-primary/5 shadow-xl group hover:border-primary/20 transition-all duration-300">
                                             <CardHeader className="pb-2">
-                                                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                                                    <FileText className="h-4 w-4 text-orange-600" />
-                                                    Resources
+                                                <CardTitle className="text-[10px] font-black uppercase tracking-widest flex items-center gap-2 text-muted-foreground">
+                                                    <FileText className="h-4 w-4 text-orange-500" />
+                                                    Knowledge Base
                                                 </CardTitle>
                                             </CardHeader>
                                             <CardContent>
-                                                <div className="text-2xl font-bold">{projectNotes.length + projectHabits.length}</div>
-                                                <p className="text-xs text-muted-foreground">
-                                                    {projectNotes.length} notes • {projectHabits.length} habits
+                                                <div className="text-3xl font-black text-foreground leading-none mb-2">{projectNotes.length + projectHabits.length}</div>
+                                                <p className="text-[10px] font-bold text-muted-foreground/60 uppercase">
+                                                    {projectNotes.length} Notes • {projectHabits.length} Habits
                                                 </p>
                                             </CardContent>
                                         </Card>
                                     </div>
 
-                                    {/* Project Health & Task Breakdown */}
-                                    <div className="grid gap-4 md:grid-cols-2">
-                                        <Card>
-                                            <CardHeader>
-                                                <CardTitle className="flex items-center gap-2">
-                                                    <BarChart3 className="h-5 w-5" />
-                                                    Task Breakdown
+                                    {/* Charts Section */}
+                                    <div className="grid gap-6 md:grid-cols-2">
+                                        <Card className="bg-background/40 backdrop-blur-xl border-primary/5 shadow-xl overflow-hidden">
+                                            <CardHeader className="bg-muted/30 border-b border-primary/5">
+                                                <CardTitle className="text-sm font-bold uppercase tracking-wider flex items-center gap-2">
+                                                    <BarChart3 className="h-5 w-5 text-primary" />
+                                                    Velocity Status
                                                 </CardTitle>
                                             </CardHeader>
-                                            <CardContent className="space-y-3">
-                                                <div className="flex items-center justify-between">
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="h-3 w-3 rounded-full bg-green-500" />
-                                                        <span className="text-sm">Completed</span>
+                                            <CardContent className="p-6 space-y-4">
+                                                <div className="flex items-center justify-between group">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="h-4 w-4 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.4)]" />
+                                                        <span className="text-sm font-bold">Successfully Completed</span>
                                                     </div>
-                                                    <Badge variant="secondary">{completedTasks}</Badge>
+                                                    <Badge variant="secondary" className="font-black">{completedTasks}</Badge>
                                                 </div>
-                                                <div className="flex items-center justify-between">
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="h-3 w-3 rounded-full bg-blue-500" />
-                                                        <span className="text-sm">In Progress</span>
+                                                <div className="flex items-center justify-between group">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="h-4 w-4 rounded-full bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.4)]" />
+                                                        <span className="text-sm font-bold">In Active Focus</span>
                                                     </div>
-                                                    <Badge variant="secondary">{inProgressTasks}</Badge>
+                                                    <Badge variant="secondary" className="font-black">{inProgressTasks}</Badge>
                                                 </div>
-                                                <div className="flex items-center justify-between">
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="h-3 w-3 rounded-full bg-gray-400" />
-                                                        <span className="text-sm">To Do</span>
+                                                <div className="flex items-center justify-between group">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="h-4 w-4 rounded-full bg-slate-400/50" />
+                                                        <span className="text-sm font-bold">Backlog / To Do</span>
                                                     </div>
-                                                    <Badge variant="secondary">{todoTasks}</Badge>
+                                                    <Badge variant="secondary" className="font-black">{todoTasks}</Badge>
                                                 </div>
                                             </CardContent>
                                         </Card>
 
-                                        <Card>
-                                            <CardHeader>
-                                                <CardTitle className="flex items-center gap-2">
-                                                    <TrendingUp className="h-5 w-5" />
-                                                    Project Health
+                                        <Card className="bg-background/40 backdrop-blur-xl border-primary/5 shadow-xl overflow-hidden">
+                                            <CardHeader className="bg-muted/30 border-b border-primary/5">
+                                                <CardTitle className="text-sm font-bold uppercase tracking-wider flex items-center gap-2">
+                                                    <TrendingUp className="h-5 w-5 text-emerald-500" />
+                                                    Overall Health
                                                 </CardTitle>
                                             </CardHeader>
-                                            <CardContent className="space-y-4">
+                                            <CardContent className="p-6 space-y-6">
                                                 <div>
-                                                    <div className="flex items-center justify-between mb-2">
-                                                        <span className="text-sm font-medium">Completion Rate</span>
-                                                        <span className="text-2xl font-bold">{completionRate}%</span>
+                                                    <div className="flex items-center justify-between mb-4">
+                                                        <span className="text-xs font-black uppercase tracking-widest text-muted-foreground">Project Completion</span>
+                                                        <span className="text-3xl font-black text-emerald-500">{completionRate}%</span>
                                                     </div>
-                                                    <Progress value={completionRate} className="h-3" />
+                                                    <Progress value={completionRate} className="h-4 rounded-full bg-emerald-500/10 shadow-inner" />
                                                 </div>
-                                                <div className="pt-2 space-y-2 text-sm">
-                                                    <div className="flex justify-between">
-                                                        <span className="text-muted-foreground">Total Tasks</span>
-                                                        <span className="font-medium">{totalTasks}</span>
+                                                <div className="grid grid-cols-2 gap-4 pt-2">
+                                                    <div className="p-3 rounded-2xl bg-muted/30 border border-primary/5">
+                                                        <p className="text-[10px] font-black uppercase text-muted-foreground/60 mb-1">Total Tasks</p>
+                                                        <p className="text-xl font-black">{totalTasks}</p>
                                                     </div>
-                                                    <div className="flex justify-between">
-                                                        <span className="text-muted-foreground">Total Time</span>
-                                                        <span className="font-medium">{totalTimeHours}h {totalTimeMinutes}m</span>
+                                                    <div className="p-3 rounded-2xl bg-muted/30 border border-primary/5">
+                                                        <p className="text-[10px] font-black uppercase text-muted-foreground/60 mb-1">Time Invested</p>
+                                                        <p className="text-xl font-black">{totalTimeHours}h</p>
                                                     </div>
                                                 </div>
                                             </CardContent>
@@ -299,31 +301,36 @@ export default function ProjectPage() {
                                     </div>
 
                                     {/* Recent Activity */}
-                                    <Card>
-                                        <CardHeader>
-                                            <CardTitle>Recent Activity</CardTitle>
+                                    <Card className="bg-background/40 backdrop-blur-xl border-primary/5 shadow-xl overflow-hidden">
+                                        <CardHeader className="bg-muted/30 border-b border-primary/5">
+                                            <CardTitle className="text-sm font-bold uppercase tracking-wider">Historical Activity</CardTitle>
                                         </CardHeader>
-                                        <CardContent>
+                                        <CardContent className="p-0">
                                             {recentTasks.length === 0 ? (
-                                                <p className="text-sm text-muted-foreground text-center py-4">No recent activity</p>
+                                                <div className="flex flex-col items-center justify-center py-12 text-center opacity-50">
+                                                    <Clock className="h-8 w-8 mb-2" />
+                                                    <p className="text-sm font-bold">No activity yet</p>
+                                                </div>
                                             ) : (
-                                                <div className="space-y-3">
+                                                <div className="divide-y divide-primary/5">
                                                     {recentTasks.map((task) => (
                                                         <Link
                                                             key={task.id}
                                                             href="/tasks"
-                                                            className="flex items-center justify-between p-3 rounded-lg hover:bg-accent transition-colors"
+                                                            className="flex items-center justify-between p-4 hover:bg-primary/5 transition-all group"
                                                         >
-                                                            <div className="flex items-center gap-3 flex-1">
-                                                                <CheckCircle2 className={`h-5 w-5 ${task.status === 'done' ? 'text-green-600' : 'text-gray-400'}`} />
-                                                                <div className="flex-1">
-                                                                    <p className="font-medium">{task.title}</p>
-                                                                    <p className="text-xs text-muted-foreground">
-                                                                        Updated {format(new Date(task.updatedAt), 'MMM d, h:mm a')}
+                                                            <div className="flex items-center gap-4 flex-1">
+                                                                <div className={`h-10 w-10 rounded-2xl flex items-center justify-center transition-colors ${task.status === 'done' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-muted/50 text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary'}`}>
+                                                                    <CheckCircle2 className="h-6 w-6" />
+                                                                </div>
+                                                                <div className="flex-1 min-w-0">
+                                                                    <p className="font-bold truncate group-hover:text-primary transition-colors">{task.title}</p>
+                                                                    <p className="text-[10px] font-black uppercase tracking-tighter text-muted-foreground/60 mt-0.5">
+                                                                        Last sync {format(new Date(task.updatedAt), 'MMM d, h:mm a')}
                                                                     </p>
                                                                 </div>
                                                             </div>
-                                                            <Badge>{task.status}</Badge>
+                                                            <Badge variant="outline" className="font-black uppercase text-[10px] bg-background/50">{task.status}</Badge>
                                                         </Link>
                                                     ))}
                                                 </div>
@@ -332,65 +339,65 @@ export default function ProjectPage() {
                                     </Card>
                                 </TabsContent>
 
-                                {/* Tasks Tab (Kanban) */}
-                                <TabsContent value="tasks" className="mt-6">
-                                    <div className="flex items-center justify-between mb-4 bg-secondary/30 p-1 rounded-xl border">
-                                        <div className="flex items-center gap-1">
-                                            <Button variant="ghost" size="sm" className="h-8 gap-2 bg-background shadow-sm border">
-                                                <LayoutGrid className="h-4 w-4" />
+                                <TabsContent value="tasks" className="mt-8">
+                                    <div className="flex flex-col sm:flex-row gap-4 items-center justify-between mb-6">
+                                        <div className="flex items-center gap-1 bg-muted/50 p-1 rounded-2xl backdrop-blur-sm border border-primary/5 w-full sm:w-auto">
+                                            <Button variant="ghost" size="sm" className="flex-1 sm:flex-initial h-9 px-6 rounded-xl font-bold tracking-tight bg-background shadow-md">
+                                                <LayoutGrid className="h-4 w-4 mr-2" />
                                                 Kanban
                                             </Button>
-                                            <Button variant="ghost" size="sm" className="h-8 gap-2">
-                                                <TableIcon className="h-4 w-4" />
+                                            <Button variant="ghost" size="sm" className="flex-1 sm:flex-initial h-9 px-6 rounded-xl font-bold tracking-tight hover:bg-background/50">
+                                                <TableIcon className="h-4 w-4 mr-2" />
                                                 Table
                                             </Button>
-                                            <Button variant="ghost" size="sm" className="h-8 gap-2">
-                                                <List className="h-4 w-4" />
+                                            <Button variant="ghost" size="sm" className="flex-1 sm:flex-initial h-9 px-6 rounded-xl font-bold tracking-tight hover:bg-background/50">
+                                                <List className="h-4 w-4 mr-2" />
                                                 List
                                             </Button>
                                         </div>
-                                        <div className="flex items-center gap-2">
+                                        <div className="flex items-center gap-3 w-full sm:w-auto">
                                             <CreateTaskDialog projectId={projectId}>
-                                                <Button size="sm" className="h-8 gap-2">
-                                                    <PlusCircle className="h-4 w-4" />
+                                                <Button size="sm" className="flex-1 sm:flex-initial h-10 px-6 rounded-2xl font-bold shadow-lg shadow-primary/20">
+                                                    <PlusCircle className="h-4 w-4 mr-2" />
                                                     Add a task
                                                 </Button>
                                             </CreateTaskDialog>
-                                            <Button variant="ghost" size="sm" className="h-8 gap-2">
+                                            <Button variant="outline" size="icon" className="h-10 w-10 rounded-2xl shrink-0">
                                                 <Filter className="h-4 w-4" />
-                                                Filter
                                             </Button>
                                         </div>
                                     </div>
-                                    <ProjectKanban projectId={projectId} tasks={projectTasks} />
+                                    <div className="p-4 rounded-3xl bg-muted/20 border border-primary/5 backdrop-blur-sm">
+                                        <ProjectKanban projectId={projectId} tasks={projectTasks} />
+                                    </div>
                                 </TabsContent>
 
-                                {/* Notes Tab */}
-                                <TabsContent value="notes" className="mt-6">
-                                    <div className="flex items-center justify-between mb-4">
-                                        <h3 className="text-lg font-semibold">Project Notes</h3>
+                                <TabsContent value="notes" className="mt-8 space-y-6">
+                                    <div className="flex items-center justify-between">
+                                        <h3 className="text-xl font-black uppercase tracking-tighter">Project Archives</h3>
                                         <Link href="/notes">
-                                            <Button variant="outline" size="sm">View All Notes</Button>
+                                            <Button variant="outline" size="sm" className="rounded-xl px-6 font-bold">View Vault</Button>
                                         </Link>
                                     </div>
                                     {projectNotes.length === 0 ? (
-                                        <Card>
-                                            <CardContent className="p-8 text-center">
-                                                <p className="text-muted-foreground">No notes in this project yet.</p>
+                                        <Card className="bg-background/40 backdrop-blur-sm border-dashed border-2 py-12">
+                                            <CardContent className="flex flex-col items-center justify-center text-center opacity-50">
+                                                <FileText className="h-12 w-12 mb-4" />
+                                                <p className="text-sm font-bold">No notes archived in this project</p>
                                             </CardContent>
                                         </Card>
                                     ) : (
-                                        <div className="grid gap-4 md:grid-cols-2">
+                                        <div className="grid gap-6 md:grid-cols-2">
                                             {projectNotes.map((note) => (
-                                                <Card key={note.id} className="hover:shadow-sm transition-shadow">
+                                                <Card key={note.id} className="group relative overflow-hidden bg-background/40 backdrop-blur-xl border-primary/10 hover:border-primary/30 transition-all duration-300 shadow-xl">
                                                     <CardHeader className="pb-3">
-                                                        <CardTitle className="text-lg">{note.title}</CardTitle>
+                                                        <CardTitle className="text-xl font-black group-hover:text-primary transition-colors">{note.title}</CardTitle>
                                                     </CardHeader>
                                                     <CardContent>
-                                                        <p className="text-sm text-muted-foreground line-clamp-3">{note.content}</p>
-                                                        <div className="flex gap-1 mt-3">
+                                                        <p className="text-sm font-medium text-muted-foreground line-clamp-3 mb-6">{note.content}</p>
+                                                        <div className="flex flex-wrap gap-2">
                                                             {note.tags.map((tag) => (
-                                                                <Badge key={tag} variant="secondary" className="text-xs">{tag}</Badge>
+                                                                <Badge key={tag} variant="secondary" className="px-3 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest bg-primary/5">{tag}</Badge>
                                                             ))}
                                                         </div>
                                                     </CardContent>
@@ -400,38 +407,43 @@ export default function ProjectPage() {
                                     )}
                                 </TabsContent>
 
-                                {/* Goals Tab */}
-                                <TabsContent value="goals" className="mt-6">
-                                    <div className="flex items-center justify-between mb-4">
-                                        <h3 className="text-lg font-semibold">Project Goals</h3>
+                                <TabsContent value="goals" className="mt-8 space-y-6">
+                                    <div className="flex items-center justify-between">
+                                        <h3 className="text-xl font-black uppercase tracking-tighter">North Stars</h3>
                                         <Link href="/goals">
-                                            <Button variant="outline" size="sm">View All Goals</Button>
+                                            <Button variant="outline" size="sm" className="rounded-xl px-6 font-bold">Manage Goals</Button>
                                         </Link>
                                     </div>
                                     {projectGoals.length === 0 ? (
-                                        <Card>
-                                            <CardContent className="p-8 text-center">
-                                                <p className="text-muted-foreground">No goals in this project yet.</p>
+                                        <Card className="bg-background/40 backdrop-blur-sm border-dashed border-2 py-12">
+                                            <CardContent className="flex flex-col items-center justify-center text-center opacity-50">
+                                                <Target className="h-12 w-12 mb-4" />
+                                                <p className="text-sm font-bold">No goals defined for this workspace</p>
                                             </CardContent>
                                         </Card>
                                     ) : (
-                                        <div className="space-y-4">
+                                        <div className="grid gap-6 md:grid-cols-2">
                                             {projectGoals.map((goal) => (
-                                                <Card key={goal.id}>
-                                                    <CardContent className="p-4">
-                                                        <div className="space-y-3">
-                                                            <div>
-                                                                <h4 className="font-semibold text-lg">{goal.title}</h4>
-                                                                {goal.description && (
-                                                                    <p className="text-sm text-muted-foreground">{goal.description}</p>
-                                                                )}
-                                                            </div>
-                                                            <div>
-                                                                <div className="flex items-center justify-between mb-2">
-                                                                    <span className="text-sm font-medium">Progress</span>
-                                                                    <span className="text-sm text-muted-foreground">{goal.progress}%</span>
+                                                <Card key={goal.id} className="group overflow-hidden bg-background/40 backdrop-blur-xl border-primary/10 hover:border-primary/30 transition-all duration-300 shadow-xl">
+                                                    <CardContent className="p-6">
+                                                        <div className="space-y-6">
+                                                            <div className="flex items-start justify-between">
+                                                                <div className="min-w-0">
+                                                                    <h4 className="font-black text-xl group-hover:text-primary transition-colors truncate">{goal.title}</h4>
+                                                                    {goal.description && (
+                                                                        <p className="text-sm font-medium text-muted-foreground line-clamp-2 mt-1">{goal.description}</p>
+                                                                    )}
                                                                 </div>
-                                                                <Progress value={goal.progress} className="h-2" />
+                                                                <div className="h-10 w-10 flex items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-500">
+                                                                    <Target className="h-6 w-6" />
+                                                                </div>
+                                                            </div>
+                                                            <div className="space-y-3">
+                                                                <div className="flex items-center justify-between">
+                                                                    <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Strategic Progress</span>
+                                                                    <span className="text-sm font-black text-primary">{goal.progress}%</span>
+                                                                </div>
+                                                                <Progress value={goal.progress} className="h-3 rounded-full bg-primary/10 shadow-inner" />
                                                             </div>
                                                         </div>
                                                     </CardContent>

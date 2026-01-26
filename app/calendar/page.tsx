@@ -192,9 +192,11 @@ export default function CalendarPage() {
                 <MainLayout>
                     <div className="space-y-6">
                         {/* Header */}
-                        <div className="flex items-center justify-between">
+                        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                             <div>
-                                <h1 className="text-3xl font-bold tracking-tight">Calendar</h1>
+                                <h1 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-foreground to-foreground/60 bg-clip-text text-transparent">
+                                    Calendar
+                                </h1>
                                 <p className="text-muted-foreground">Visualize your tasks, goals, and reminders</p>
                             </div>
                             <div className="flex items-center gap-2">
@@ -202,6 +204,7 @@ export default function CalendarPage() {
                                     variant="outline"
                                     size="sm"
                                     onClick={() => setDate(new Date())}
+                                    className="bg-background/50 backdrop-blur-sm border-primary/20 hover:border-primary/50 transition-all duration-300"
                                 >
                                     Today
                                 </Button>
@@ -209,57 +212,59 @@ export default function CalendarPage() {
                         </div>
 
                         {/* Filters */}
-                        <Card className="p-4">
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                    <Filter className="h-4 w-4 text-muted-foreground" />
-                                    <span className="text-sm font-medium">Show:</span>
-                                    <Button
-                                        variant={showTasks ? 'default' : 'outline'}
-                                        size="sm"
-                                        onClick={() => setShowTasks(!showTasks)}
-                                        className="gap-2"
-                                    >
-                                        <CheckSquare className="h-4 w-4" />
-                                        Tasks
-                                    </Button>
-                                    <Button
-                                        variant={showGoals ? 'default' : 'outline'}
-                                        size="sm"
-                                        onClick={() => setShowGoals(!showGoals)}
-                                        className="gap-2"
-                                    >
-                                        <Target className="h-4 w-4" />
-                                        Goals
-                                    </Button>
-                                    <Button
-                                        variant={showReminders ? 'default' : 'outline'}
-                                        size="sm"
-                                        onClick={() => setShowReminders(!showReminders)}
-                                        className="gap-2"
-                                    >
-                                        <Bell className="h-4 w-4" />
-                                        Reminders
-                                    </Button>
+                        <Card className="p-4 bg-background/40 backdrop-blur-xl border-primary/10">
+                            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                                <div className="flex items-center gap-2 overflow-x-auto pb-2 lg:pb-0 scrollbar-hide">
+                                    <div className="flex items-center gap-2 min-w-max">
+                                        <Filter className="h-4 w-4 text-muted-foreground shrink-0" />
+                                        <span className="text-sm font-medium shrink-0">Show:</span>
+                                        <Button
+                                            variant={showTasks ? 'default' : 'outline'}
+                                            size="sm"
+                                            onClick={() => setShowTasks(!showTasks)}
+                                            className="gap-2 h-8"
+                                        >
+                                            <CheckSquare className="h-3.5 w-3.5" />
+                                            Tasks
+                                        </Button>
+                                        <Button
+                                            variant={showGoals ? 'default' : 'outline'}
+                                            size="sm"
+                                            onClick={() => setShowGoals(!showGoals)}
+                                            className="gap-2 h-8"
+                                        >
+                                            <Target className="h-3.5 w-3.5" />
+                                            Goals
+                                        </Button>
+                                        <Button
+                                            variant={showReminders ? 'default' : 'outline'}
+                                            size="sm"
+                                            onClick={() => setShowReminders(!showReminders)}
+                                            className="gap-2 h-8"
+                                        >
+                                            <Bell className="h-3.5 w-3.5" />
+                                            Reminders
+                                        </Button>
+                                    </div>
                                 </div>
 
-                                <div className="flex items-center gap-4">
-                                    <div className="flex items-center gap-2 text-sm">
-                                        <div className="flex items-center gap-1">
-                                            <div className="w-3 h-3 rounded bg-red-500" />
-                                            <span className="text-muted-foreground">High Priority</span>
+                                <div className="flex items-center gap-4 overflow-x-auto pb-2 lg:pb-0 scrollbar-hide">
+                                    <div className="flex items-center gap-4 text-[10px] sm:text-xs min-w-max">
+                                        <div className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-red-500/10 border border-red-500/20">
+                                            <div className="w-2 h-2 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]" />
+                                            <span className="text-muted-foreground font-medium">High Priority</span>
                                         </div>
-                                        <div className="flex items-center gap-1">
-                                            <div className="w-3 h-3 rounded bg-blue-500" />
-                                            <span className="text-muted-foreground">In Progress</span>
+                                        <div className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-blue-500/10 border border-blue-500/20">
+                                            <div className="w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]" />
+                                            <span className="text-muted-foreground font-medium">In Progress</span>
                                         </div>
-                                        <div className="flex items-center gap-1">
-                                            <div className="w-3 h-3 rounded bg-green-500" />
-                                            <span className="text-muted-foreground">Completed/Goals</span>
+                                        <div className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-green-500/10 border border-green-500/20">
+                                            <div className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+                                            <span className="text-muted-foreground font-medium">Completed</span>
                                         </div>
-                                        <div className="flex items-center gap-1">
-                                            <div className="w-3 h-3 rounded bg-pink-500" />
-                                            <span className="text-muted-foreground">Reminders</span>
+                                        <div className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-pink-500/10 border border-pink-500/20">
+                                            <div className="w-2 h-2 rounded-full bg-pink-500 shadow-[0_0_8px_rgba(236,72,153,0.5)]" />
+                                            <span className="text-muted-foreground font-medium">Reminders</span>
                                         </div>
                                     </div>
                                 </div>
@@ -267,8 +272,8 @@ export default function CalendarPage() {
                         </Card>
 
                         {/* Calendar */}
-                        <Card className="p-6">
-                            <div className="calendar-container" style={{ height: '700px' }}>
+                        <Card className="p-0 sm:p-6 overflow-hidden bg-background/40 backdrop-blur-xl border-primary/10 shadow-2xl">
+                            <div className="calendar-container h-[600px] md:h-[750px]">
                                 <BigCalendar
                                     localizer={localizer}
                                     events={events}
@@ -290,55 +295,55 @@ export default function CalendarPage() {
                         </Card>
 
                         {/* Stats */}
-                        <div className="grid gap-4 md:grid-cols-4">
-                            <Card className="p-4">
+                        <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
+                            <Card className="p-4 bg-background/40 backdrop-blur-sm border-primary/10 hover:border-primary/30 transition-all duration-300 group">
                                 <div className="flex items-center gap-3">
-                                    <div className="p-2 rounded-lg bg-violet-100 dark:bg-violet-900/20">
+                                    <div className="p-2 rounded-xl bg-violet-100 dark:bg-violet-900/20 group-hover:scale-110 transition-transform duration-300">
                                         <CheckSquare className="h-5 w-5 text-violet-600" />
                                     </div>
                                     <div>
                                         <p className="text-2xl font-bold">
                                             {tasks.filter((t) => t.deadline).length}
                                         </p>
-                                        <p className="text-xs text-muted-foreground">Tasks with Deadlines</p>
+                                        <p className="text-[10px] sm:text-xs text-muted-foreground font-medium uppercase tracking-wider">Deadlines</p>
                                     </div>
                                 </div>
                             </Card>
 
-                            <Card className="p-4">
+                            <Card className="p-4 bg-background/40 backdrop-blur-sm border-primary/10 hover:border-primary/30 transition-all duration-300 group">
                                 <div className="flex items-center gap-3">
-                                    <div className="p-2 rounded-lg bg-emerald-100 dark:bg-emerald-900/20">
+                                    <div className="p-2 rounded-xl bg-emerald-100 dark:bg-emerald-900/20 group-hover:scale-110 transition-transform duration-300">
                                         <Target className="h-5 w-5 text-emerald-600" />
                                     </div>
                                     <div>
                                         <p className="text-2xl font-bold">
                                             {goals.filter((g) => g.targetDate).length}
                                         </p>
-                                        <p className="text-xs text-muted-foreground">Goals with Targets</p>
+                                        <p className="text-[10px] sm:text-xs text-muted-foreground font-medium uppercase tracking-wider">Goal Targets</p>
                                     </div>
                                 </div>
                             </Card>
 
-                            <Card className="p-4">
+                            <Card className="p-4 bg-background/40 backdrop-blur-sm border-primary/10 hover:border-primary/30 transition-all duration-300 group">
                                 <div className="flex items-center gap-3">
-                                    <div className="p-2 rounded-lg bg-pink-100 dark:bg-pink-900/20">
+                                    <div className="p-2 rounded-xl bg-pink-100 dark:bg-pink-900/20 group-hover:scale-110 transition-transform duration-300">
                                         <Bell className="h-5 w-5 text-pink-600" />
                                     </div>
                                     <div>
                                         <p className="text-2xl font-bold">{reminders.length}</p>
-                                        <p className="text-xs text-muted-foreground">Total Reminders</p>
+                                        <p className="text-[10px] sm:text-xs text-muted-foreground font-medium uppercase tracking-wider">Reminders</p>
                                     </div>
                                 </div>
                             </Card>
 
-                            <Card className="p-4">
+                            <Card className="p-4 bg-background/40 backdrop-blur-sm border-primary/10 hover:border-primary/30 transition-all duration-300 group">
                                 <div className="flex items-center gap-3">
-                                    <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/20">
+                                    <div className="p-2 rounded-xl bg-blue-100 dark:bg-blue-900/20 group-hover:scale-110 transition-transform duration-300">
                                         <CalendarIcon className="h-5 w-5 text-blue-600" />
                                     </div>
                                     <div>
                                         <p className="text-2xl font-bold">{events.length}</p>
-                                        <p className="text-xs text-muted-foreground">Total Events</p>
+                                        <p className="text-[10px] sm:text-xs text-muted-foreground font-medium uppercase tracking-wider">Total Events</p>
                                     </div>
                                 </div>
                             </Card>
@@ -348,51 +353,114 @@ export default function CalendarPage() {
                     <style jsx global>{`
             .rbc-calendar {
               font-family: inherit;
+              color: hsl(var(--foreground));
             }
             .rbc-header {
               padding: 12px 8px;
               font-weight: 600;
-              border-bottom: 2px solid hsl(var(--border));
+              border-bottom: 1px solid hsl(var(--border));
+              background-color: hsl(var(--muted) / 0.2);
+              font-size: 0.75rem;
+              text-transform: uppercase;
+              letter-spacing: 0.05em;
             }
             .rbc-today {
-              background-color: hsl(var(--primary) / 0.05);
+              background-color: hsl(var(--primary) / 0.08);
             }
             .rbc-off-range-bg {
-              background-color: hsl(var(--muted) / 0.3);
+              background-color: hsl(var(--muted) / 0.1);
             }
             .rbc-event {
               border: none !important;
-              box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+              box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+              transition: all 0.2s ease;
             }
             .rbc-event:hover {
-              box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+              transform: translateY(-1px);
+              box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
             }
             .rbc-toolbar {
-              padding: 16px 0;
-              font-size: 1rem;
+              padding: 1.5rem;
+              margin-bottom: 0;
+              flex-wrap: wrap;
+              gap: 1rem;
+              justify-content: center;
+              background-color: hsl(var(--muted) / 0.1);
+              border-bottom: 1px solid hsl(var(--border));
+            }
+            @media (min-width: 768px) {
+              .rbc-toolbar {
+                justify-content: space-between;
+              }
+            }
+            .rbc-toolbar-label {
+              font-size: 1.25rem;
+              font-weight: 700;
+              color: hsl(var(--foreground));
+              order: -1;
+              width: 100%;
+              text-align: center;
+            }
+            @media (min-width: 768px) {
+              .rbc-toolbar-label {
+                order: 0;
+                width: auto;
+              }
+            }
+            .rbc-btn-group {
+              display: flex;
+              gap: 2px;
+              background-color: hsl(var(--background));
+              padding: 2px;
+              border-radius: 8px;
+              border: 1px solid hsl(var(--border));
             }
             .rbc-toolbar button {
-              padding: 8px 16px;
+              padding: 6px 12px;
               border-radius: 6px;
               font-weight: 500;
+              border: none !important;
+              background: transparent;
+              color: hsl(var(--muted-foreground));
+              font-size: 0.875rem;
+              transition: all 0.2s;
             }
             .rbc-toolbar button:hover {
               background-color: hsl(var(--accent));
+              color: hsl(var(--accent-foreground));
             }
             .rbc-toolbar button.rbc-active {
               background-color: hsl(var(--primary));
-              color: white;
+              color: hsl(var(--primary-foreground));
+              box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
             }
             .rbc-month-view {
-              border: 1px solid hsl(var(--border));
-              border-radius: 8px;
-              overflow: hidden;
+              border: none;
+              background: transparent;
             }
-            .rbc-day-bg {
-              border-color: hsl(var(--border));
+            .rbc-day-bg + .rbc-day-bg {
+              border-left: 1px solid hsl(var(--border) / 0.5);
+            }
+            .rbc-month-row + .rbc-month-row {
+              border-top: 1px solid hsl(var(--border) / 0.5);
             }
             .rbc-date-cell {
-              padding: 8px;
+              padding: 6px;
+              font-size: 0.8125rem;
+              font-weight: 500;
+            }
+            .rbc-show-more {
+              font-size: 0.75rem;
+              font-weight: 600;
+              color: hsl(var(--primary));
+              background: transparent;
+            }
+            .scrollbar-hide::-webkit-scrollbar {
+              display: none;
+            }
+            .scrollbar-hide {
+              -ms-overflow-style: none;
+              scrollbar-width: none;
             }
           `}</style>
                 </MainLayout>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { MainLayout } from '@/components/layout/main-layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -26,8 +26,9 @@ import {
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useStore } from '@/lib/store';
-import { Plus, Trash2, Edit, Calendar as CalendarIcon, LayoutGrid, List, Clock } from 'lucide-react';
+import { Plus, Trash2, Edit, Calendar as CalendarIcon, LayoutGrid, List, Clock, Sparkles } from 'lucide-react';
 import { format } from 'date-fns';
+import { cn } from '@/lib/utils';
 import type { Task, TaskStatus, TaskPriority } from '@/types';
 import { ProtectedRoute } from '@/components/protected-route';
 import { DataLoader } from '@/components/data-loader';
@@ -36,7 +37,7 @@ import { TaskGanttTimeline } from '@/components/task-gantt-timeline';
 import { ProjectSelector } from '@/components/projects/project-selector';
 import { ProjectBadge } from '@/components/projects/project-badge';
 
-export default function TasksPage() {
+function TasksPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { tasks, addTask, updateTask, deleteTask, userId: currentUserId, goals, projects, selectedProjectId } = useStore();
@@ -69,6 +70,7 @@ export default function TasksPage() {
     goalId: '',
     milestoneId: '',
     projectId: '' as string | undefined,
+    coverImage: '',
   });
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -88,6 +90,7 @@ export default function TasksPage() {
         goalId: formData.goalId || undefined,
         milestoneId: formData.milestoneId || undefined,
         projectId: formData.projectId || undefined,
+        coverImage: formData.coverImage || undefined,
       });
     } else {
       const scheduledStart = formData.scheduledStart ? new Date(formData.scheduledStart) : undefined;
@@ -106,6 +109,7 @@ export default function TasksPage() {
         goalId: formData.goalId || undefined,
         milestoneId: formData.milestoneId || undefined,
         projectId: formData.projectId || undefined,
+        coverImage: formData.coverImage || undefined,
         createdAt: new Date(),
         updatedAt: new Date(),
       };
@@ -123,6 +127,7 @@ export default function TasksPage() {
       goalId: '',
       milestoneId: '',
       projectId: '',
+      coverImage: '',
     });
     setEditingTask(null);
     setIsDialogOpen(false);
@@ -141,6 +146,7 @@ export default function TasksPage() {
       goalId: task.goalId || '',
       milestoneId: task.milestoneId || '',
       projectId: task.projectId || '',
+      coverImage: task.coverImage || '',
     });
     setIsDialogOpen(true);
   };
@@ -258,7 +264,7 @@ export default function TasksPage() {
     if (compact) {
       return (
         <div
-          className="group relative flex items-center gap-4 p-4 rounded-lg border bg-card hover:bg-accent/50 hover:shadow-md transition-all duration-200 cursor-pointer"
+          className="group relative flex items-center gap-3 sm:gap-4 p-3 sm:p-4 rounded-xl border bg-background/40 backdrop-blur-sm hover:border-primary/30 hover:shadow-lg transition-all duration-300 cursor-pointer overflow-hidden"
           onClick={(e) => {
             // Don't navigate if clicking on action buttons
             if (!(e.target as HTMLElement).closest('button')) {
@@ -274,27 +280,27 @@ export default function TasksPage() {
 
           {/* Status checkbox */}
           <div className="flex items-center">
-            <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${task.status === 'done'
-              ? 'bg-green-500 border-green-500'
+            <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all duration-300 ${task.status === 'done'
+              ? 'bg-green-500 border-green-500 shadow-[0_0_10px_rgba(34,197,94,0.4)]'
               : task.status === 'in-progress'
-                ? 'bg-yellow-500 border-yellow-500'
-                : 'border-muted-foreground/30 hover:border-muted-foreground'
+                ? 'bg-yellow-500 border-yellow-500 shadow-[0_0_10px_rgba(234,179,8,0.4)]'
+                : 'border-muted-foreground/30 hover:border-primary/50'
               }`}>
               {task.status === 'done' && (
-                <svg className="w-3 h-3 text-white" fill="none" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" stroke="currentColor">
+                <svg className="w-3 h-3 text-white animate-in zoom-in duration-300" fill="none" strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" viewBox="0 0 24 24" stroke="currentColor">
                   <path d="M5 13l4 4L19 7"></path>
                 </svg>
               )}
               {task.status === 'in-progress' && (
-                <div className="w-2 h-2 bg-white rounded-full" />
+                <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
               )}
             </div>
           </div>
 
           {/* Main content */}
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1">
-              <h3 className={`font-semibold text-sm truncate ${task.status === 'done' ? 'line-through text-muted-foreground' : ''}`}>
+            <div className="flex flex-wrap items-center gap-2 mb-1">
+              <h3 className={`font-bold text-sm sm:text-base truncate transition-all duration-300 ${task.status === 'done' ? 'line-through text-muted-foreground opacity-60' : ''}`}>
                 {task.title}
               </h3>
               <Badge
@@ -305,63 +311,57 @@ export default function TasksPage() {
                       ? 'default'
                       : 'secondary'
                 }
-                className="text-xs px-2 py-0 h-5"
+                className="text-[10px] px-1.5 py-0 h-4 uppercase tracking-wider font-bold"
               >
                 {task.priority}
               </Badge>
             </div>
 
             {task.description && (
-              <p className="text-xs text-muted-foreground truncate mb-2">{task.description}</p>
+              <p className="text-xs text-muted-foreground truncate mb-2 max-w-[90%]">{task.description}</p>
             )}
 
-            <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-2 sm:gap-4 flex-wrap">
               {linkedGoal && (
                 <div className="flex items-center gap-1.5">
-                  <Badge variant="outline" className="text-xs px-2 py-0 h-5">
-                    🎯 {linkedGoal.title}
-                  </Badge>
+                  <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/5 border border-primary/10 text-[10px] font-medium">
+                    <span>🎯</span>
+                    <span className="truncate max-w-[80px] sm:max-w-none">{linkedGoal.title}</span>
+                  </div>
                   {linkedMilestone && (
-                    <Badge variant="secondary" className="text-xs px-2 py-0 h-5">
-                      {linkedMilestone.completed ? '✓' : '○'} {linkedMilestone.title}
-                    </Badge>
+                    <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-muted border border-border text-[10px] font-medium">
+                      <span>{linkedMilestone.completed ? '✓' : '○'}</span>
+                      <span className="truncate max-w-[80px] sm:max-w-none">{linkedMilestone.title}</span>
+                    </div>
                   )}
                 </div>
               )}
               {linkedProject && (
-                <Badge
-                  variant="outline"
-                  className="text-xs px-2 py-0 h-5"
-                  style={{ borderColor: `${linkedProject.color}40`, color: linkedProject.color }}
+                <div
+                  className="flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-bold"
+                  style={{ borderColor: `${linkedProject.color}30`, color: linkedProject.color, backgroundColor: `${linkedProject.color}08` }}
                 >
-                  📁 {linkedProject.name}
-                </Badge>
+                  <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: linkedProject.color }} />
+                  {linkedProject.name}
+                </div>
               )}
               {task.deadline && (
-                <div className="flex items-center text-xs text-muted-foreground">
-                  <CalendarIcon className="h-3 w-3 mr-1" />
-                  {format(new Date(task.deadline), 'MMM d, yyyy')}
+                <div className="flex items-center text-[10px] sm:text-xs font-medium text-muted-foreground bg-muted/30 px-2 py-0.5 rounded-md">
+                  <CalendarIcon className="h-3 w-3 mr-1 text-primary/60" />
+                  {format(new Date(task.deadline), 'MMM d')}
                 </div>
               )}
               {task.estimatedDuration && (
-                <div className="flex items-center text-xs text-muted-foreground">
-                  <Clock className="h-3 w-3 mr-1" />
+                <div className="flex items-center text-[10px] sm:text-xs font-medium text-muted-foreground bg-muted/30 px-2 py-0.5 rounded-md">
+                  <Clock className="h-3 w-3 mr-1 text-primary/60" />
                   {Math.floor(task.estimatedDuration / 60)}h {task.estimatedDuration % 60}m
-                </div>
-              )}
-              {task.dependencyIds && task.dependencyIds.length > 0 && (
-                <div className="flex items-center text-xs text-blue-600 dark:text-blue-400">
-                  <svg className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                  </svg>
-                  {task.dependencyIds.length} {task.dependencyIds.length === 1 ? 'dependency' : 'dependencies'}
                 </div>
               )}
             </div>
           </div>
 
           {/* Actions */}
-          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all duration-300">
             <Button
               size="sm"
               variant="ghost"
@@ -369,9 +369,9 @@ export default function TasksPage() {
                 e.stopPropagation();
                 handleEdit(task);
               }}
-              className="h-8 w-8 p-0"
+              className="h-8 w-8 p-0 hover:bg-primary/10 hover:text-primary rounded-full"
             >
-              <Edit className="h-4 w-4" />
+              <Edit className="h-3.5 w-3.5" />
             </Button>
             <Button
               size="sm"
@@ -380,9 +380,9 @@ export default function TasksPage() {
                 e.stopPropagation();
                 handleDelete(task.id);
               }}
-              className="h-8 w-8 p-0 hover:bg-destructive/10 hover:text-destructive"
+              className="h-8 w-8 p-0 hover:bg-destructive/10 hover:text-destructive rounded-full"
             >
-              <Trash2 className="h-4 w-4" />
+              <Trash2 className="h-3.5 w-3.5" />
             </Button>
           </div>
         </div>
@@ -399,10 +399,19 @@ export default function TasksPage() {
           }
         }}
       >
-        <CardContent className="p-4">
+        {task.coverImage && (
+          <div className="w-full h-32 overflow-hidden rounded-t-lg">
+            <img
+              src={task.coverImage}
+              alt={task.title}
+              className="w-full h-full object-cover transition-transform duration-300 hover:scale-110"
+            />
+          </div>
+        )}
+        <CardContent className={cn("p-4", task.coverImage && "pt-3")}>
           <div className="flex items-start justify-between">
             <div className="flex-1">
-              <h3 className="font-semibold mb-1">{task.title}</h3>
+              <h3 className="font-semibold mb-1 truncate">{task.title}</h3>
               {task.description && (
                 <p className="text-sm text-muted-foreground mb-2">{task.description}</p>
               )}
@@ -471,45 +480,50 @@ export default function TasksPage() {
       <DataLoader>
         <MainLayout>
           <div className="space-y-6">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h1 className="text-3xl font-bold tracking-tight">Tasks</h1>
+                <h1 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-foreground to-foreground/60 bg-clip-text text-transparent">
+                  Tasks
+                </h1>
                 <p className="text-muted-foreground">Manage your tasks and to-dos</p>
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-2">
                 {/* Information about active filter */}
                 {selectedProjectId && (
-                  <Badge variant="outline" className="h-9 px-4 hidden md:flex items-center gap-2">
-                    <span className="text-muted-foreground mr-1">Filtered by:</span>
+                  <Badge variant="outline" className="h-9 px-4 flex items-center gap-2 bg-background/50 backdrop-blur-sm border-primary/10">
+                    <span className="text-muted-foreground mr-1 hidden sm:inline">Filtered by:</span>
                     {selectedProjectId === 'personal' ? 'Personal' : projects.find(p => p.id === selectedProjectId)?.name}
                   </Badge>
                 )}
 
                 {/* View Mode Toggle */}
-                <div className="flex items-center gap-1 bg-muted p-1 rounded-lg">
+                <div className="flex items-center gap-1 bg-muted/50 p-1 rounded-xl backdrop-blur-sm border border-primary/5">
                   <Button
                     size="sm"
                     variant={viewMode === 'list' ? 'default' : 'ghost'}
                     onClick={() => setViewMode('list')}
+                    className="h-8 px-2 sm:px-3"
                   >
-                    <List className="h-4 w-4 mr-1" />
-                    List
+                    <List className="h-4 w-4 sm:mr-1" />
+                    <span className="hidden sm:inline">List</span>
                   </Button>
                   <Button
                     size="sm"
                     variant={viewMode === 'kanban' ? 'default' : 'ghost'}
                     onClick={() => setViewMode('kanban')}
+                    className="h-8 px-2 sm:px-3"
                   >
-                    <LayoutGrid className="h-4 w-4 mr-1" />
-                    Kanban
+                    <LayoutGrid className="h-4 w-4 sm:mr-1" />
+                    <span className="hidden sm:inline">Kanban</span>
                   </Button>
                   <Button
                     size="sm"
                     variant={viewMode === 'timeline' ? 'default' : 'ghost'}
                     onClick={() => setViewMode('timeline')}
+                    className="h-8 px-2 sm:px-3"
                   >
-                    <Clock className="h-4 w-4 mr-1" />
-                    Timeline
+                    <Clock className="h-4 w-4 sm:mr-1" />
+                    <span className="hidden sm:inline">Timeline</span>
                   </Button>
                 </div>
                 <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
@@ -527,6 +541,7 @@ export default function TasksPage() {
                         goalId: '',
                         milestoneId: '',
                         projectId: '',
+                        coverImage: '',
                       });
                     }}>
                       <Plus className="h-4 w-4 mr-2" />
@@ -716,6 +731,39 @@ export default function TasksPage() {
                         </div>
                       </div>
 
+                      <div className="space-y-2">
+                        <Label htmlFor="coverImage">Cover Image (URL)</Label>
+                        <div className="flex gap-2">
+                          <Input
+                            id="coverImage"
+                            value={formData.coverImage}
+                            onChange={(e) => setFormData({ ...formData, coverImage: e.target.value })}
+                            placeholder="https://images.unsplash.com/..."
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => {
+                              const abstractImages = [
+                                'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800&q=80',
+                                'https://images.unsplash.com/photo-1633167606207-d840b5070fc2?w=800&q=80',
+                                'https://images.unsplash.com/photo-1614850523296-d8c1af93d400?w=800&q=80',
+                                'https://images.unsplash.com/photo-1579546929518-9e396f3cc809?w=800&q=80',
+                                'https://images.unsplash.com/photo-1557683316-973673baf926?w=800&q=80',
+                              ];
+                              const randomImg = abstractImages[Math.floor(Math.random() * abstractImages.length)];
+                              setFormData({ ...formData, coverImage: randomImg });
+                            }}
+                          >
+                            <Sparkles className="h-4 w-4 mr-1 text-purple-500" />
+                            Random
+                          </Button>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Provide a URL or click "Random" for an abstract image
+                        </p>
+                      </div>
+
                       <Button type="submit" className="w-full">
                         {editingTask ? 'Update Task' : 'Create Task'}
                       </Button>
@@ -763,13 +811,13 @@ export default function TasksPage() {
               </div>
             ) : viewMode === 'list' ? (
               <Tabs defaultValue="all" className="w-full">
-                <TabsList>
-                  <TabsTrigger value="all">All ({tasks.length})</TabsTrigger>
-                  <TabsTrigger value="todo">To Do ({filterTasksByStatus('todo').length})</TabsTrigger>
-                  <TabsTrigger value="in-progress">
+                <TabsList className="w-full justify-start overflow-x-auto scrollbar-hide bg-muted/30 border border-primary/5 p-1 rounded-xl">
+                  <TabsTrigger value="all" className="rounded-lg">All ({tasks.length})</TabsTrigger>
+                  <TabsTrigger value="todo" className="rounded-lg px-4">To Do ({filterTasksByStatus('todo').length})</TabsTrigger>
+                  <TabsTrigger value="in-progress" className="rounded-lg px-4 whitespace-nowrap">
                     In Progress ({filterTasksByStatus('in-progress').length})
                   </TabsTrigger>
-                  <TabsTrigger value="done">Done ({filterTasksByStatus('done').length})</TabsTrigger>
+                  <TabsTrigger value="done" className="rounded-lg px-4">Done ({filterTasksByStatus('done').length})</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="all" className="space-y-3 mt-6">
@@ -827,7 +875,7 @@ export default function TasksPage() {
                 </TabsContent>
               </Tabs>
             ) : (
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 h-full">
                 {/* To Do Column */}
                 <div
                   className="space-y-2"
@@ -928,6 +976,20 @@ export default function TasksPage() {
           </div>
         </MainLayout>
       </DataLoader>
-    </ProtectedRoute>
+    </ProtectedRoute >
+  );
+}
+
+export default function TasksPage() {
+  return (
+    <Suspense fallback={
+      <MainLayout>
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <p className="text-muted-foreground animate-pulse">Initializing workspace...</p>
+        </div>
+      </MainLayout>
+    }>
+      <TasksPageContent />
+    </Suspense>
   );
 }

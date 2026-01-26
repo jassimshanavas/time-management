@@ -27,6 +27,7 @@ export interface Project {
   name: string;
   description?: string;
   color: string;
+  emoji?: string;
   status: 'active' | 'archived' | 'completed';
   createdAt: Date;
   updatedAt: Date;
@@ -53,6 +54,7 @@ export interface Task {
   subtasks?: TaskSubtask[]; // Optional: Subtasks checklist
   dependencyIds?: string[]; // Optional: Task dependencies (other task IDs)
   journal?: TaskJournalEntry[]; // Optional: Journal/notes entries
+  coverImage?: string; // Optional: Cover image URL for the task
   userId: string; // Required for Firestore security rules
 }
 
