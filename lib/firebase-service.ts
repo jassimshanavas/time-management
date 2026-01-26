@@ -32,13 +32,70 @@ const convertTimestamps = (data: any) => {
   return converted;
 };
 
-const removeUndefinedFields = (data: Record<string, any>) =>
-  Object.entries(data).reduce((acc, [key, value]) => {
-    if (value !== undefined) {
-      acc[key] = value;
+const serializeForFirestore = (data: Record<string, any>) => {
+  return Object.entries(data).reduce((acc, [key, value]) => {
+    // Skip undefined values for addDoc/setDoc
+    if (value === undefined) {
+      return acc;
     }
+
+    // Convert Date to Timestamp
+    if (value instanceof Date) {
+      acc[key] = Timestamp.fromDate(value);
+      return acc;
+    }
+
+    // Recursively handle arrays (e.g. milestones)
+    if (Array.isArray(value)) {
+      acc[key] = value.map(item =>
+        item instanceof Date ? Timestamp.fromDate(item) :
+          (typeof item === 'object' && item !== null && !(item instanceof Timestamp) ? serializeForFirestore(item) : item)
+      );
+      return acc;
+    }
+
+    // Recursively handle nested objects
+    if (typeof value === 'object' && value !== null && !(value instanceof Timestamp)) {
+      acc[key] = serializeForFirestore(value);
+      return acc;
+    }
+
+    acc[key] = value;
     return acc;
   }, {} as Record<string, any>);
+};
+
+const serializeUpdateForFirestore = (updates: Record<string, any>) => {
+  return Object.entries(updates).reduce((acc, [key, value]) => {
+    // Use deleteField() for undefined values in updates
+    if (value === undefined) {
+      acc[key] = deleteField();
+      return acc;
+    }
+
+    if (value instanceof Date) {
+      acc[key] = Timestamp.fromDate(value);
+      return acc;
+    }
+
+    // Handle nested arrays/objects in updates
+    if (Array.isArray(value)) {
+      acc[key] = value.map(item =>
+        item instanceof Date ? Timestamp.fromDate(item) :
+          (typeof item === 'object' && item !== null && !(item instanceof Timestamp) ? serializeForFirestore(item) : item)
+      );
+      return acc;
+    }
+
+    if (typeof value === 'object' && value !== null && !(value instanceof Timestamp)) {
+      acc[key] = serializeForFirestore(value);
+      return acc;
+    }
+
+    acc[key] = value;
+    return acc;
+  }, {} as Record<string, any>);
+};
 
 // ==================== TASKS ====================
 export const getTasks = async (userId: string): Promise<Task[]> => {
@@ -51,14 +108,9 @@ export const getTasks = async (userId: string): Promise<Task[]> => {
 };
 
 export const addTask = async (userId: string, task: Omit<Task, 'id' | 'userId'>): Promise<string> => {
-  const serializedTask = removeUndefinedFields({
+  const serializedTask = serializeForFirestore({
     ...task,
     userId,
-    createdAt: Timestamp.fromDate(task.createdAt),
-    updatedAt: Timestamp.fromDate(task.updatedAt),
-    deadline: task.deadline ? Timestamp.fromDate(task.deadline) : null,
-    scheduledStart: task.scheduledStart ? Timestamp.fromDate(task.scheduledStart) : null,
-    scheduledEnd: task.scheduledEnd ? Timestamp.fromDate(task.scheduledEnd) : null,
   });
 
   const docRef = await addDoc(collection(db, 'tasks'), serializedTask);
@@ -67,30 +119,8 @@ export const addTask = async (userId: string, task: Omit<Task, 'id' | 'userId'>)
 
 export const updateTask = async (taskId: string, updates: Partial<Task>): Promise<void> => {
   const taskRef = doc(db, 'tasks', taskId);
-
-  // Check if document exists first
-  const taskSnap = await getDoc(taskRef);
-  if (!taskSnap.exists()) {
-    throw new Error(`Task with ID ${taskId} does not exist in Firestore`);
-  }
-
-  const data = Object.entries(updates).reduce((acc, [key, value]) => {
-    if (value === undefined) {
-      acc[key] = deleteField();
-      return acc;
-    }
-
-    if (value instanceof Date) {
-      acc[key] = Timestamp.fromDate(value);
-      return acc;
-    }
-
-    acc[key] = value;
-    return acc;
-  }, {} as Record<string, any>);
-
+  const data = serializeUpdateForFirestore(updates);
   if (Object.keys(data).length === 0) return;
-
   await updateDoc(taskRef, data);
 };
 
@@ -121,19 +151,17 @@ export const getReminders = async (userId: string): Promise<Reminder[]> => {
 };
 
 export const addReminder = async (userId: string, reminder: Omit<Reminder, 'id'>): Promise<string> => {
-  const docRef = await addDoc(collection(db, 'reminders'), {
+  const serializedReminder = serializeForFirestore({
     ...reminder,
     userId,
-    dueDate: Timestamp.fromDate(reminder.dueDate),
-    createdAt: Timestamp.fromDate(reminder.createdAt),
   });
+  const docRef = await addDoc(collection(db, 'reminders'), serializedReminder);
   return docRef.id;
 };
 
 export const updateReminder = async (reminderId: string, updates: Partial<Reminder>): Promise<void> => {
   const reminderRef = doc(db, 'reminders', reminderId);
-  const data: any = { ...updates };
-  if (data.dueDate) data.dueDate = Timestamp.fromDate(data.dueDate);
+  const data = serializeUpdateForFirestore(updates);
   await updateDoc(reminderRef, data);
 };
 
@@ -152,19 +180,17 @@ export const getNotes = async (userId: string): Promise<Note[]> => {
 };
 
 export const addNote = async (userId: string, note: Omit<Note, 'id'>): Promise<string> => {
-  const docRef = await addDoc(collection(db, 'notes'), {
+  const serializedNote = serializeForFirestore({
     ...note,
     userId,
-    createdAt: Timestamp.fromDate(note.createdAt),
-    updatedAt: Timestamp.fromDate(note.updatedAt),
   });
+  const docRef = await addDoc(collection(db, 'notes'), serializedNote);
   return docRef.id;
 };
 
 export const updateNote = async (noteId: string, updates: Partial<Note>): Promise<void> => {
   const noteRef = doc(db, 'notes', noteId);
-  const data: any = { ...updates };
-  if (data.updatedAt) data.updatedAt = Timestamp.fromDate(data.updatedAt);
+  const data = serializeUpdateForFirestore(updates);
   await updateDoc(noteRef, data);
 };
 
@@ -183,29 +209,17 @@ export const getGoals = async (userId: string): Promise<Goal[]> => {
 };
 
 export const addGoal = async (userId: string, goal: Omit<Goal, 'id'>): Promise<string> => {
-  const docRef = await addDoc(collection(db, 'goals'), {
+  const serializedGoal = serializeForFirestore({
     ...goal,
     userId,
-    createdAt: Timestamp.fromDate(goal.createdAt),
-    targetDate: goal.targetDate ? Timestamp.fromDate(goal.targetDate) : null,
-    milestones: goal.milestones.map((m) => ({
-      ...m,
-      completedAt: m.completedAt ? Timestamp.fromDate(m.completedAt) : null,
-    })),
   });
+  const docRef = await addDoc(collection(db, 'goals'), serializedGoal);
   return docRef.id;
 };
 
 export const updateGoal = async (goalId: string, updates: Partial<Goal>): Promise<void> => {
   const goalRef = doc(db, 'goals', goalId);
-  const data: any = { ...updates };
-  if (data.targetDate) data.targetDate = Timestamp.fromDate(data.targetDate);
-  if (data.milestones) {
-    data.milestones = data.milestones.map((m: any) => ({
-      ...m,
-      completedAt: m.completedAt ? Timestamp.fromDate(m.completedAt) : null,
-    }));
-  }
+  const data = serializeUpdateForFirestore(updates);
   await updateDoc(goalRef, data);
 };
 
@@ -224,19 +238,17 @@ export const getProjects = async (userId: string): Promise<Project[]> => {
 };
 
 export const addProject = async (userId: string, project: Omit<Project, 'id' | 'userId'>): Promise<string> => {
-  const docRef = await addDoc(collection(db, 'projects'), {
+  const serializedProject = serializeForFirestore({
     ...project,
     userId,
-    createdAt: Timestamp.fromDate(project.createdAt),
-    updatedAt: Timestamp.fromDate(project.updatedAt),
   });
+  const docRef = await addDoc(collection(db, 'projects'), serializedProject);
   return docRef.id;
 };
 
 export const updateProject = async (projectId: string, updates: Partial<Project>): Promise<void> => {
   const projectRef = doc(db, 'projects', projectId);
-  const data: any = { ...updates };
-  if (data.updatedAt) data.updatedAt = Timestamp.fromDate(data.updatedAt);
+  const data = serializeUpdateForFirestore(updates);
   await updateDoc(projectRef, data);
 };
 
@@ -255,21 +267,17 @@ export const getHabits = async (userId: string): Promise<Habit[]> => {
 };
 
 export const addHabit = async (userId: string, habit: Omit<Habit, 'id'>): Promise<string> => {
-  const docRef = await addDoc(collection(db, 'habits'), {
+  const serializedHabit = serializeForFirestore({
     ...habit,
     userId,
-    createdAt: Timestamp.fromDate(habit.createdAt),
-    completedDates: habit.completedDates.map((d) => Timestamp.fromDate(d)),
   });
+  const docRef = await addDoc(collection(db, 'habits'), serializedHabit);
   return docRef.id;
 };
 
 export const updateHabit = async (habitId: string, updates: Partial<Habit>): Promise<void> => {
   const habitRef = doc(db, 'habits', habitId);
-  const data: any = { ...updates };
-  if (data.completedDates) {
-    data.completedDates = data.completedDates.map((d: Date) => Timestamp.fromDate(d));
-  }
+  const data = serializeUpdateForFirestore(updates);
   await updateDoc(habitRef, data);
 };
 
@@ -291,23 +299,18 @@ export const getTimeEntries = async (userId: string): Promise<TimeEntry[]> => {
 };
 
 export const addTimeEntry = async (userId: string, entry: Omit<TimeEntry, 'id'>): Promise<string> => {
-  const payload: Record<string, any> = {
+  const serializedEntry = serializeForFirestore({
     ...entry,
     userId,
-    startTime: Timestamp.fromDate(entry.startTime),
-    endTime: entry.endTime ? Timestamp.fromDate(entry.endTime) : null,
-  };
-  delete payload.id;
+  });
 
-  const docRef = await addDoc(collection(db, 'timeEntries'), payload);
+  const docRef = await addDoc(collection(db, 'timeEntries'), serializedEntry);
   return docRef.id;
 };
 
 export const updateTimeEntry = async (entryId: string, updates: Partial<TimeEntry>): Promise<void> => {
   const entryRef = doc(db, 'timeEntries', entryId);
-  const data: any = { ...updates };
-  if (data.startTime) data.startTime = Timestamp.fromDate(data.startTime);
-  if (data.endTime) data.endTime = Timestamp.fromDate(data.endTime);
+  const data = serializeUpdateForFirestore(updates);
   await updateDoc(entryRef, data);
 };
 

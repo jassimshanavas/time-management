@@ -10,6 +10,8 @@ import { format, isToday, isYesterday, startOfDay } from 'date-fns';
 import Link from 'next/link';
 import { ProtectedRoute } from '@/components/protected-route';
 import { DataLoader } from '@/components/data-loader';
+import { cn } from '@/lib/utils';
+import { Sparkles, Brain, Zap, Workflow, Flame, Plus, History, Activity } from 'lucide-react';
 
 export default function TimelinePage() {
   const { tasks, reminders, habits, timeEntries } = useStore();
@@ -104,24 +106,27 @@ export default function TimelinePage() {
       <DataLoader>
         <MainLayout>
           <div className="space-y-8">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between px-1">
               <div>
-                <h1 className="text-2xl font-black tracking-tight bg-gradient-to-r from-foreground to-foreground/60 bg-clip-text text-transparent">
-                  Life History
+                <div className="flex items-center gap-2 mb-1">
+                  <Badge variant="outline" className="text-[9px] font-black uppercase tracking-widest bg-violet-500/5 text-violet-500 border-violet-500/20 px-2 py-0 h-4">Chronological Stream</Badge>
+                </div>
+                <h1 className="text-3xl lg:text-4xl font-black tracking-tight bg-gradient-to-r from-foreground to-foreground/60 bg-clip-text text-transparent italic">
+                  Operational History
                 </h1>
-                <p className="text-xs text-muted-foreground">Every step recorded in your productivity journey</p>
+                <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mt-1 opacity-70">A immutable transcript of your strategic evolution</p>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-3">
                 <Link href="/timeline/day" className="flex-1 sm:flex-initial">
-                  <Button className="w-full h-9 px-4 rounded-xl shadow-md shadow-primary/10 bg-primary font-black text-xs">
-                    <Layout className="h-4 w-4 mr-1.5" />
+                  <Button className="w-full h-11 px-6 rounded-xl shadow-lg shadow-primary/10 bg-primary font-black text-[10px] uppercase tracking-widest transition-all hover:scale-105 active:scale-95">
+                    <Layout className="h-4 w-4 mr-2" />
                     Interactive Planner
                   </Button>
                 </Link>
                 <Link href="/timeline/gantt" className="flex-1 sm:flex-initial">
-                  <Button variant="outline" className="w-full h-9 px-4 rounded-xl bg-background/50 backdrop-blur-sm border-primary/10 font-bold text-xs">
-                    <BarChart3 className="h-4 w-4 mr-1.5" />
-                    Gantt View
+                  <Button variant="outline" className="w-full h-11 px-6 rounded-xl bg-background/40 backdrop-blur-sm border-primary/10 font-black text-[10px] uppercase tracking-widest transition-all hover:scale-105 active:scale-95">
+                    <BarChart3 className="h-4 w-4 mr-2" />
+                    Gantt Matrix
                   </Button>
                 </Link>
               </div>
@@ -136,96 +141,104 @@ export default function TimelinePage() {
                 </CardContent>
               </Card>
             ) : (
-              <div className="relative">
+              <div className="relative px-1">
                 {/* The main vertical life-line */}
-                <div className="absolute left-[19px] sm:left-[27px] top-6 bottom-0 w-1 bg-gradient-to-b from-primary/30 via-primary/10 to-transparent rounded-full" />
+                <div className="absolute left-[19px] sm:left-[27px] top-6 bottom-0 w-[2px] bg-gradient-to-b from-primary via-primary/20 to-transparent rounded-full shadow-[0_0_8px_rgba(var(--primary),0.2)]" />
 
-                <div className="space-y-6">
+                <div className="space-y-12">
                   {Object.entries(groupedEvents).map(([dateKey, events]) => {
                     const date = new Date(dateKey);
                     return (
-                      <div key={dateKey} className="space-y-4 relative">
-                        <div className="sticky top-0 sm:static sm:top-auto py-1 z-20 sm:z-0">
-                          <div className="inline-flex flex-col sm:flex-row sm:items-baseline gap-1 sm:gap-3 px-3 py-1 bg-background/80 backdrop-blur-xl sm:bg-transparent rounded-xl border border-primary/5 sm:border-0 shadow-md sm:shadow-none">
-                            <h2 className="text-xl font-black tracking-tighter sm:text-2xl">{getDateLabel(date)}</h2>
-                            <Badge variant="outline" className="w-fit text-[9px] font-black uppercase tracking-widest bg-primary/5 text-primary border-primary/10 px-2.5 py-0 rounded-full">
-                              {events.length} Events
+                      <div key={dateKey} className="space-y-6 relative">
+                        <div className="sticky top-0 sm:static sm:top-auto py-2 z-20 sm:z-0 -mx-4 px-4 sm:mx-0 sm:px-0">
+                          <div className="inline-flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 px-5 py-2.5 bg-background/60 backdrop-blur-3xl rounded-2xl border border-primary/10 shadow-2xl shadow-primary/5">
+                            <h2 className="text-xl font-black tracking-tighter sm:text-2xl italic leading-none">{getDateLabel(date)}</h2>
+                            <div className="hidden sm:block h-1 w-1 rounded-full bg-primary" />
+                            <Badge variant="outline" className="w-fit text-[9px] font-black uppercase tracking-widest bg-primary/5 text-primary border-primary/20 px-3 py-0.5 rounded-full">
+                              {events.length} Operational Records
                             </Badge>
                           </div>
                         </div>
 
-                        <div className="space-y-4">
+                        <div className="space-y-6">
                           {events.map((event) => (
-                            <div key={event.id} className="relative pl-8 sm:pl-12 group">
-                              <div className="absolute left-0 sm:left-1 top-0 h-8 w-8 sm:h-9 sm:w-9 bg-background flex items-center justify-center rounded-xl border-2 border-primary/10 shadow-lg z-10 transition-transform group-hover:scale-110 duration-300">
+                            <div key={event.id} className="relative pl-10 sm:pl-16 group transition-all duration-500">
+                              <div className="absolute left-0 sm:left-1 top-0 h-10 w-10 sm:h-11 sm:w-11 bg-background/80 backdrop-blur-xl flex items-center justify-center rounded-2xl border border-primary/10 shadow-xl z-10 transition-all group-hover:scale-110 group-hover:border-primary/40 group-hover:shadow-primary/10 duration-500">
                                 {getEventIcon(event.type)}
                               </div>
 
-                              <Card className={`overflow-hidden bg-background/40 backdrop-blur-xl border-primary/5 group-hover:border-primary/20 transition-all duration-300 shadow-xl rounded-2xl`}>
-                                <div className={`absolute top-0 left-0 w-1 h-full bg-gradient-to-b ${event.type === 'task' ? 'from-violet-500 to-violet-300' :
-                                  event.type === 'reminder' ? 'from-pink-500 to-pink-300' :
-                                    event.type === 'habit' ? 'from-emerald-500 to-emerald-300' :
-                                      'from-blue-500 to-blue-300'
-                                  }`} />
+                              <Card className="relative overflow-hidden bg-background/60 backdrop-blur-2xl border border-primary/5 group-hover:border-primary/20 transition-all duration-500 shadow-2xl rounded-[2rem] group-hover:shadow-primary/5">
+                                <div className={cn(
+                                  "absolute top-0 left-0 w-1.5 h-full opacity-60",
+                                  event.type === 'task' ? 'bg-gradient-to-b from-violet-600 to-violet-400' :
+                                    event.type === 'reminder' ? 'bg-gradient-to-b from-pink-600 to-pink-400' :
+                                      event.type === 'habit' ? 'bg-gradient-to-b from-emerald-600 to-emerald-400' :
+                                        'bg-gradient-to-b from-blue-600 to-blue-400'
+                                )} />
 
-                                <CardContent className="p-3 sm:p-4">
-                                  <div className="flex flex-col gap-3">
-                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
-                                      <div className="flex items-center gap-1.5">
-                                        <Badge variant="outline" className="text-[9px] font-black uppercase tracking-widest bg-muted/50 border-transparent shadow-sm px-1.5 h-4">
+                                <CardContent className="p-6">
+                                  <div className="flex flex-col gap-4">
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                      <div className="flex items-center gap-2">
+                                        <Badge variant="outline" className="text-[9px] font-black uppercase tracking-[0.2em] bg-muted/20 border-transparent shadow-sm px-2 h-5">
                                           {event.type.replace('-', ' ')}
                                         </Badge>
-                                        <div className="h-0.5 w-0.5 rounded-full bg-muted-foreground/30" />
-                                        <span className="text-[10px] font-black text-muted-foreground/60 uppercase tracking-tighter">
+                                        <div className="h-1 w-1 rounded-full bg-muted-foreground/20" />
+                                        <span className="text-[10px] font-black text-muted-foreground/50 uppercase tracking-widest tabular-nums italic">
                                           {format(event.timestamp, 'h:mm a')}
                                         </span>
                                       </div>
 
                                       {event.type === 'task' && (
-                                        <div className="flex gap-1.5">
+                                        <div className="flex gap-2">
                                           <Badge
                                             variant={event.metadata.status === 'done' ? 'default' : 'secondary'}
-                                            className="text-[8px] font-black uppercase tracking-widest px-1.5 py-0 h-4"
+                                            className={cn(
+                                              "text-[9px] font-black uppercase tracking-widest px-2.5 h-5",
+                                              event.metadata.status === 'done' ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20" : "bg-primary/5 text-primary/60 border border-primary/10"
+                                            )}
                                           >
                                             {event.metadata.status}
                                           </Badge>
                                           {event.metadata.priority === 'high' && (
-                                            <Badge variant="destructive" className="text-[8px] font-black uppercase tracking-widest px-1.5 py-0 h-4">Critical</Badge>
+                                            <Badge variant="destructive" className="text-[9px] font-black uppercase tracking-widest px-2.5 h-5 bg-destructive/10 text-destructive border-transparent">Priority Max</Badge>
                                           )}
                                         </div>
                                       )}
 
                                       {event.type === 'reminder' && event.metadata.completed && (
-                                        <Badge variant="default" className="bg-emerald-500 text-white border-0 text-[8px] font-black uppercase tracking-widest px-2 py-0 h-4">Done</Badge>
+                                        <Badge variant="default" className="bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 text-[9px] font-black uppercase tracking-widest px-3 h-5">Secured</Badge>
                                       )}
                                     </div>
 
                                     <div>
-                                      <h3 className="text-base font-black tracking-tight mb-1 group-hover:text-primary transition-colors">{event.title}</h3>
+                                      <h3 className="text-lg font-black tracking-tight mb-2 group-hover:text-primary transition-colors italic leading-tight">{event.title}</h3>
 
                                       {event.type === 'habit' && (
-                                        <div className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-orange-500/10 rounded-full border border-orange-500/20 text-orange-600 dark:text-orange-400">
-                                          <TrendingUp className="h-3 w-3" />
-                                          <span className="text-[10px] font-black uppercase tracking-tight">🔥 {event.metadata.streak} days</span>
+                                        <div className="inline-flex items-center gap-2 px-3 py-1 bg-orange-500/10 rounded-full border border-orange-500/20 text-orange-500">
+                                          <Flame className="h-3.5 w-3.5 animate-pulse" />
+                                          <span className="text-[10px] font-black uppercase tracking-widest italic">{event.metadata.streak} DAY PULSE</span>
                                         </div>
                                       )}
 
                                       {event.type === 'time-entry' && (
-                                        <div className="space-y-2">
+                                        <div className="space-y-4">
                                           {event.metadata.description && (
-                                            <p className="text-xs font-medium text-muted-foreground/70 leading-normal line-clamp-1">
+                                            <p className="text-xs font-medium text-muted-foreground/60 leading-relaxed max-w-2xl">
                                               {event.metadata.description}
                                             </p>
                                           )}
-                                          {event.metadata.duration && (
-                                            <div className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-blue-500/10 rounded-full border border-blue-500/20 text-blue-600 dark:text-blue-400">
-                                              <Clock className="h-3 w-3" />
-                                              <span className="text-[10px] font-black uppercase tracking-tight">
-                                                {Math.floor(event.metadata.duration / 60)}h{' '}
-                                                {event.metadata.duration % 60}m
-                                              </span>
-                                            </div>
-                                          )}
+                                          <div className="flex items-center gap-3">
+                                            {event.metadata.duration !== undefined && (
+                                              <div className="inline-flex items-center gap-2 px-3 py-1 bg-blue-500/10 rounded-full border border-blue-500/20 text-blue-600 dark:text-blue-400">
+                                                <Clock className="h-3.5 w-3.5" />
+                                                <span className="text-[10px] font-black uppercase tracking-widest tabular-nums">
+                                                  {Math.floor(event.metadata.duration / 60)}H{' '}
+                                                  {event.metadata.duration % 60}M AUDIT
+                                                </span>
+                                              </div>
+                                            )}
+                                          </div>
                                         </div>
                                       )}
                                     </div>

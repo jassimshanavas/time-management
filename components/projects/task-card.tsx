@@ -2,7 +2,7 @@
 
 import { Task } from '@/types';
 import { Badge } from '@/components/ui/badge';
-import { Calendar, MessageSquare, Paperclip, MoreHorizontal } from 'lucide-react';
+import { Clock, MessageSquare, MoreHorizontal } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -13,62 +13,58 @@ interface TaskCardProps {
 
 export function TaskCard({ task }: TaskCardProps) {
     return (
-        <div className="group bg-background p-4 rounded-2xl border border-transparent hover:border-primary/20 hover:shadow-xl transition-all duration-300 cursor-grab active:cursor-grabbing mb-4 shadow-sm animate-in fade-in slide-in-from-bottom-2 duration-300">
-            <div className="flex items-center justify-between mb-3">
+        <div className="group bg-background/60 backdrop-blur-md p-3 rounded-xl border border-primary/5 hover:border-primary/20 hover:shadow-lg transition-all duration-300 cursor-grab active:cursor-grabbing mb-3 shadow-sm animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <div className="flex items-center justify-between mb-2">
                 <Badge
-                    variant="secondary"
+                    variant="outline"
                     className={cn(
-                        "text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider",
-                        task.tags?.[0]?.toLowerCase() === 'planning' && "bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400",
-                        task.tags?.[0]?.toLowerCase() === 'ux design' && "bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400",
-                        task.tags?.[0]?.toLowerCase() === 'ux research' && "bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400",
+                        "text-[8px] font-black px-1.5 py-0 h-4 rounded-md uppercase tracking-widest border-transparent bg-muted/50",
+                        task.tags?.[0]?.toLowerCase() === 'planning' && "bg-blue-500/10 text-blue-500",
+                        task.tags?.[0]?.toLowerCase() === 'ux design' && "bg-orange-500/10 text-orange-500",
+                        task.tags?.[0]?.toLowerCase() === 'ux research' && "bg-purple-500/10 text-purple-500",
                     )}
                 >
-                    {task.tags?.[0] || 'General'}
+                    {task.tags?.[0] || 'Uncategorized'}
                 </Badge>
-                <div className="flex items-center gap-1.5 opacity-60 group-hover:opacity-100 transition-opacity">
+                <div className="flex items-center gap-1 opacity-40 group-hover:opacity-100 transition-opacity">
                     {task.deadline && (
-                        <div className="flex items-center gap-1 text-[10px] font-medium">
-                            <Calendar className="h-3 w-3" />
+                        <div className="flex items-center gap-1 text-[8px] font-black uppercase tracking-tighter">
+                            <Clock className="h-2.5 w-2.5" />
                             {task.status === 'done' ? 'Done' : format(new Date(task.deadline), 'MMM d')}
                         </div>
                     )}
                 </div>
             </div>
 
-            <h3 className="font-semibold text-sm leading-relaxed mb-4 group-hover:text-primary transition-colors line-clamp-2">
+            <h3 className="font-bold text-xs leading-tight mb-3 group-hover:text-primary transition-colors line-clamp-2 tracking-tight">
                 {task.title}
             </h3>
 
-            {/* Optional image placeholder or realistic asset if needed */}
-            {task.title.includes('UX Process') && (
-                <div className="grid grid-cols-2 gap-2 mb-4">
-                    <div className="aspect-[4/3] rounded-xl bg-gradient-to-br from-primary/10 to-primary/5 border border-primary/5 overflow-hidden">
-                        <div className="w-full h-full bg-slate-200 animate-pulse" />
+            {/* Optional visualization for UX tasks */}
+            {task.title.toLowerCase().includes('ux') && (
+                <div className="grid grid-cols-2 gap-1.5 mb-3 opacity-80 group-hover:opacity-100 transition-opacity">
+                    <div className="aspect-[4/3] rounded-lg bg-gradient-to-br from-primary/10 to-primary/5 border border-primary/5 flex items-center justify-center">
+                        <div className="w-1/2 h-0.5 bg-primary/20 rounded-full" />
                     </div>
-                    <div className="aspect-[4/3] rounded-xl bg-gradient-to-br from-sky-100 to-sky-50 border border-sky-100 overflow-hidden">
-                        <div className="w-full h-full bg-slate-100 animate-pulse" />
+                    <div className="aspect-[4/3] rounded-lg bg-gradient-to-br from-sky-500/10 to-transparent border border-sky-500/10 flex items-center justify-center">
+                        <div className="w-1/3 h-0.5 bg-sky-500/30 rounded-full" />
                     </div>
                 </div>
             )}
 
-            <div className="flex items-center justify-between pt-3 border-t border-slate-50 dark:border-slate-800">
-                <div className="flex items-center gap-3 text-muted-foreground">
-                    <div className="flex items-center gap-1 hex-sm font-medium hover:text-foreground transition-colors">
-                        <MessageSquare className="h-3.5 w-3.5" />
-                        <span className="text-[10px]">8</span>
-                    </div>
-                    <div className="flex items-center gap-1 text-sm font-medium hover:text-foreground transition-colors">
-                        <Paperclip className="h-3.5 w-3.5" />
-                        <span className="text-[10px]">4</span>
+            <div className="flex items-center justify-between pt-2 border-t border-primary/5">
+                <div className="flex items-center gap-2 text-muted-foreground/50">
+                    <div className="flex items-center gap-1 hover:text-primary transition-colors">
+                        <MessageSquare className="h-3 w-3" />
+                        <span className="text-[8px] font-black">2</span>
                     </div>
                 </div>
 
-                <div className="flex -space-x-2">
+                <div className="flex -space-x-1.5">
                     {[1, 2].map((i) => (
-                        <Avatar key={i} className="h-6 w-6 ring-2 ring-background border-none">
+                        <Avatar key={i} className="h-5 w-5 ring-2 ring-background border-none shadow-sm">
                             <AvatarImage src={`https://api.dicebear.com/7.x/avataaars/svg?seed=Assignee${i + (parseInt(task.id.slice(-1)) || 0)}`} />
-                            <AvatarFallback>A</AvatarFallback>
+                            <AvatarFallback className="text-[6px]">A</AvatarFallback>
                         </Avatar>
                     ))}
                 </div>

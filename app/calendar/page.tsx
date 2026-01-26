@@ -21,6 +21,8 @@ import {
 import { ProtectedRoute } from '@/components/protected-route';
 import { DataLoader } from '@/components/data-loader';
 import { ProjectBadge } from '@/components/projects/project-badge';
+import { cn } from '@/lib/utils';
+import { Sparkles, Brain, Zap, Workflow, Flame, Plus } from 'lucide-react';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 
 const locales = {
@@ -190,81 +192,93 @@ export default function CalendarPage() {
         <ProtectedRoute>
             <DataLoader>
                 <MainLayout>
-                    <div className="space-y-6">
+                    <div className="space-y-8 pb-12">
                         {/* Header */}
-                        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between px-1">
                             <div>
-                                <h1 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-foreground to-foreground/60 bg-clip-text text-transparent">
-                                    Calendar
+                                <div className="flex items-center gap-2 mb-1">
+                                    <Badge variant="outline" className="text-[9px] font-black uppercase tracking-widest bg-emerald-500/5 text-emerald-500 border-emerald-500/20 px-2 py-0 h-4">Event Matrix</Badge>
+                                </div>
+                                <h1 className="text-3xl lg:text-4xl font-black tracking-tight bg-gradient-to-r from-foreground to-foreground/60 bg-clip-text text-transparent italic">
+                                    Global Event Matrix
                                 </h1>
-                                <p className="text-muted-foreground">Visualize your tasks, goals, and reminders</p>
+                                <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mt-1 opacity-70">Synthesizing multidimensional operational timelines</p>
                             </div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-3">
                                 <Button
                                     variant="outline"
                                     size="sm"
                                     onClick={() => setDate(new Date())}
-                                    className="bg-background/50 backdrop-blur-sm border-primary/20 hover:border-primary/50 transition-all duration-300"
+                                    className="h-10 px-6 rounded-xl font-black text-[10px] uppercase tracking-widest bg-background/40 border-primary/10 shadow-sm transition-all hover:scale-105 active:scale-95"
                                 >
-                                    Today
+                                    Jump to Present
+                                </Button>
+                                <Button size="icon" className="h-10 w-10 rounded-xl bg-primary shadow-lg shadow-primary/20">
+                                    <Plus className="h-4 w-4" />
                                 </Button>
                             </div>
                         </div>
 
                         {/* Filters */}
-                        <Card className="p-4 bg-background/40 backdrop-blur-xl border-primary/10">
-                            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                                <div className="flex items-center gap-2 overflow-x-auto pb-2 lg:pb-0 scrollbar-hide">
+                        <Card className="px-1 sm:p-5 bg-background/60 backdrop-blur-2xl border-none shadow-2xl rounded-[2rem] overflow-hidden">
+                            <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between p-4 sm:p-0">
+                                <div className="flex items-center gap-3 overflow-x-auto pb-4 lg:pb-0 scrollbar-hide">
                                     <div className="flex items-center gap-2 min-w-max">
-                                        <Filter className="h-4 w-4 text-muted-foreground shrink-0" />
-                                        <span className="text-sm font-medium shrink-0">Show:</span>
+                                        <div className="h-8 w-8 rounded-xl bg-primary/5 border border-primary/10 flex items-center justify-center mr-2">
+                                            <Filter className="h-4 w-4 text-primary" />
+                                        </div>
                                         <Button
                                             variant={showTasks ? 'default' : 'outline'}
                                             size="sm"
                                             onClick={() => setShowTasks(!showTasks)}
-                                            className="gap-2 h-8"
+                                            className={cn(
+                                                "h-9 px-4 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all",
+                                                !showTasks && "bg-background/40 border-primary/10"
+                                            )}
                                         >
-                                            <CheckSquare className="h-3.5 w-3.5" />
-                                            Tasks
+                                            <CheckSquare className="h-3.5 w-3.5 mr-2" />
+                                            Operations
                                         </Button>
                                         <Button
                                             variant={showGoals ? 'default' : 'outline'}
                                             size="sm"
                                             onClick={() => setShowGoals(!showGoals)}
-                                            className="gap-2 h-8"
+                                            className={cn(
+                                                "h-9 px-4 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all",
+                                                !showGoals && "bg-background/40 border-primary/10"
+                                            )}
                                         >
-                                            <Target className="h-3.5 w-3.5" />
-                                            Goals
+                                            <Target className="h-3.5 w-3.5 mr-2" />
+                                            Targets
                                         </Button>
                                         <Button
                                             variant={showReminders ? 'default' : 'outline'}
                                             size="sm"
                                             onClick={() => setShowReminders(!showReminders)}
-                                            className="gap-2 h-8"
+                                            className={cn(
+                                                "h-9 px-4 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all",
+                                                !showReminders && "bg-background/40 border-primary/10"
+                                            )}
                                         >
-                                            <Bell className="h-3.5 w-3.5" />
-                                            Reminders
+                                            <Bell className="h-3.5 w-3.5 mr-2" />
+                                            Neural Alerts
                                         </Button>
                                     </div>
                                 </div>
 
                                 <div className="flex items-center gap-4 overflow-x-auto pb-2 lg:pb-0 scrollbar-hide">
-                                    <div className="flex items-center gap-4 text-[10px] sm:text-xs min-w-max">
-                                        <div className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-red-500/10 border border-red-500/20">
+                                    <div className="flex items-center gap-4 min-w-max bg-muted/10 p-2 rounded-2xl border border-primary/5">
+                                        <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-background/40 border border-red-500/10">
                                             <div className="w-2 h-2 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]" />
-                                            <span className="text-muted-foreground font-medium">High Priority</span>
+                                            <span className="text-[9px] font-black uppercase tracking-widest opacity-60 italic">Critical</span>
                                         </div>
-                                        <div className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-blue-500/10 border border-blue-500/20">
+                                        <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-background/40 border border-blue-500/10">
                                             <div className="w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]" />
-                                            <span className="text-muted-foreground font-medium">In Progress</span>
+                                            <span className="text-[9px] font-black uppercase tracking-widest opacity-60 italic">In Flux</span>
                                         </div>
-                                        <div className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-green-500/10 border border-green-500/20">
+                                        <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-background/40 border border-green-500/10">
                                             <div className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
-                                            <span className="text-muted-foreground font-medium">Completed</span>
-                                        </div>
-                                        <div className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-pink-500/10 border border-pink-500/20">
-                                            <div className="w-2 h-2 rounded-full bg-pink-500 shadow-[0_0_8px_rgba(236,72,153,0.5)]" />
-                                            <span className="text-muted-foreground font-medium">Reminders</span>
+                                            <span className="text-[9px] font-black uppercase tracking-widest opacity-60 italic">Secured</span>
                                         </div>
                                     </div>
                                 </div>
@@ -272,8 +286,8 @@ export default function CalendarPage() {
                         </Card>
 
                         {/* Calendar */}
-                        <Card className="p-0 sm:p-6 overflow-hidden bg-background/40 backdrop-blur-xl border-primary/10 shadow-2xl">
-                            <div className="calendar-container h-[600px] md:h-[750px]">
+                        <Card className="p-0 border-none bg-background/60 backdrop-blur-2xl shadow-2xl rounded-[3rem] overflow-hidden">
+                            <div className="calendar-container h-[700px] md:h-[850px] overflow-hidden">
                                 <BigCalendar
                                     localizer={localizer}
                                     events={events}
@@ -295,55 +309,56 @@ export default function CalendarPage() {
                         </Card>
 
                         {/* Stats */}
-                        <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
-                            <Card className="p-4 bg-background/40 backdrop-blur-sm border-primary/10 hover:border-primary/30 transition-all duration-300 group">
-                                <div className="flex items-center gap-3">
-                                    <div className="p-2 rounded-xl bg-violet-100 dark:bg-violet-900/20 group-hover:scale-110 transition-transform duration-300">
-                                        <CheckSquare className="h-5 w-5 text-violet-600" />
+                        {/* Stats */}
+                        <div className="grid gap-6 grid-cols-2 lg:grid-cols-4 px-1">
+                            <Card className="relative overflow-hidden border-none bg-background/60 backdrop-blur-2xl shadow-xl rounded-[2rem] p-6 transition-all duration-500 hover:shadow-violet-500/5 group">
+                                <div className="flex items-center gap-4">
+                                    <div className="h-10 w-10 rounded-2xl bg-violet-500/5 border border-violet-500/10 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
+                                        <Workflow className="h-5 w-5 text-violet-500" />
                                     </div>
                                     <div>
-                                        <p className="text-2xl font-bold">
+                                        <p className="text-2xl font-black italic tabular-nums leading-none mb-1">
                                             {tasks.filter((t) => t.deadline).length}
                                         </p>
-                                        <p className="text-[10px] sm:text-xs text-muted-foreground font-medium uppercase tracking-wider">Deadlines</p>
+                                        <p className="text-[10px] font-black text-muted-foreground/40 uppercase tracking-widest">Deadlines</p>
                                     </div>
                                 </div>
                             </Card>
 
-                            <Card className="p-4 bg-background/40 backdrop-blur-sm border-primary/10 hover:border-primary/30 transition-all duration-300 group">
-                                <div className="flex items-center gap-3">
-                                    <div className="p-2 rounded-xl bg-emerald-100 dark:bg-emerald-900/20 group-hover:scale-110 transition-transform duration-300">
-                                        <Target className="h-5 w-5 text-emerald-600" />
+                            <Card className="relative overflow-hidden border-none bg-background/60 backdrop-blur-2xl shadow-xl rounded-[2rem] p-6 transition-all duration-500 hover:shadow-emerald-500/5 group">
+                                <div className="flex items-center gap-4">
+                                    <div className="h-10 w-10 rounded-2xl bg-emerald-500/5 border border-emerald-500/10 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
+                                        <Zap className="h-5 w-5 text-emerald-500" />
                                     </div>
                                     <div>
-                                        <p className="text-2xl font-bold">
+                                        <p className="text-2xl font-black italic tabular-nums leading-none mb-1">
                                             {goals.filter((g) => g.targetDate).length}
                                         </p>
-                                        <p className="text-[10px] sm:text-xs text-muted-foreground font-medium uppercase tracking-wider">Goal Targets</p>
+                                        <p className="text-[10px] font-black text-muted-foreground/40 uppercase tracking-widest">Targets</p>
                                     </div>
                                 </div>
                             </Card>
 
-                            <Card className="p-4 bg-background/40 backdrop-blur-sm border-primary/10 hover:border-primary/30 transition-all duration-300 group">
-                                <div className="flex items-center gap-3">
-                                    <div className="p-2 rounded-xl bg-pink-100 dark:bg-pink-900/20 group-hover:scale-110 transition-transform duration-300">
-                                        <Bell className="h-5 w-5 text-pink-600" />
+                            <Card className="relative overflow-hidden border-none bg-background/60 backdrop-blur-2xl shadow-xl rounded-[2rem] p-6 transition-all duration-500 hover:shadow-pink-500/5 group">
+                                <div className="flex items-center gap-4">
+                                    <div className="h-10 w-10 rounded-2xl bg-pink-500/5 border border-pink-500/10 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
+                                        <Bell className="h-5 w-5 text-pink-500" />
                                     </div>
                                     <div>
-                                        <p className="text-2xl font-bold">{reminders.length}</p>
-                                        <p className="text-[10px] sm:text-xs text-muted-foreground font-medium uppercase tracking-wider">Reminders</p>
+                                        <p className="text-2xl font-black italic tabular-nums leading-none mb-1">{reminders.length}</p>
+                                        <p className="text-[10px] font-black text-muted-foreground/40 uppercase tracking-widest">Alerts</p>
                                     </div>
                                 </div>
                             </Card>
 
-                            <Card className="p-4 bg-background/40 backdrop-blur-sm border-primary/10 hover:border-primary/30 transition-all duration-300 group">
-                                <div className="flex items-center gap-3">
-                                    <div className="p-2 rounded-xl bg-blue-100 dark:bg-blue-900/20 group-hover:scale-110 transition-transform duration-300">
-                                        <CalendarIcon className="h-5 w-5 text-blue-600" />
+                            <Card className="relative overflow-hidden border-none bg-background/60 backdrop-blur-2xl shadow-xl rounded-[2rem] p-6 transition-all duration-500 hover:shadow-blue-500/5 group">
+                                <div className="flex items-center gap-4">
+                                    <div className="h-10 w-10 rounded-2xl bg-blue-500/5 border border-blue-500/10 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
+                                        <Brain className="h-5 w-5 text-blue-500" />
                                     </div>
                                     <div>
-                                        <p className="text-2xl font-bold">{events.length}</p>
-                                        <p className="text-[10px] sm:text-xs text-muted-foreground font-medium uppercase tracking-wider">Total Events</p>
+                                        <p className="text-2xl font-black italic tabular-nums leading-none mb-1">{events.length}</p>
+                                        <p className="text-[10px] font-black text-muted-foreground/40 uppercase tracking-widest">Synapses</p>
                                     </div>
                                 </div>
                             </Card>
@@ -354,39 +369,48 @@ export default function CalendarPage() {
             .rbc-calendar {
               font-family: inherit;
               color: hsl(var(--foreground));
+              border: none !important;
+            }
+            .rbc-month-view {
+              border: none !important;
             }
             .rbc-header {
-              padding: 12px 8px;
-              font-weight: 600;
-              border-bottom: 1px solid hsl(var(--border));
-              background-color: hsl(var(--muted) / 0.2);
-              font-size: 0.75rem;
+              padding: 16px 8px;
+              font-weight: 900;
+              border-bottom: 1px solid hsl(var(--primary) / 0.05) !important;
+              background-color: hsl(var(--muted) / 0.1);
+              font-size: 10px;
               text-transform: uppercase;
-              letter-spacing: 0.05em;
+              letter-spacing: 0.2em;
+              color: hsl(var(--muted-foreground) / 0.6);
             }
             .rbc-today {
-              background-color: hsl(var(--primary) / 0.08);
+              background-color: hsl(var(--primary) / 0.03) !important;
             }
             .rbc-off-range-bg {
-              background-color: hsl(var(--muted) / 0.1);
+              background-color: transparent !important;
+              opacity: 0.3;
             }
             .rbc-event {
               border: none !important;
-              box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-              transition: all 0.2s ease;
+              box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+              transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+              border-radius: 10px !important;
+              margin: 2px 4px !important;
             }
             .rbc-event:hover {
-              transform: translateY(-1px);
-              box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+              transform: scale(1.02) translateY(-1px);
+              box-shadow: 0 12px 24px rgba(0, 0, 0, 0.15);
+              z-index: 50;
             }
             .rbc-toolbar {
-              padding: 1.5rem;
+              padding: 2rem;
               margin-bottom: 0;
               flex-wrap: wrap;
-              gap: 1rem;
+              gap: 1.5rem;
               justify-content: center;
               background-color: hsl(var(--muted) / 0.1);
-              border-bottom: 1px solid hsl(var(--border));
+              border-bottom: 1px solid hsl(var(--primary) / 0.05);
             }
             @media (min-width: 768px) {
               .rbc-toolbar {
@@ -395,11 +419,14 @@ export default function CalendarPage() {
             }
             .rbc-toolbar-label {
               font-size: 1.25rem;
-              font-weight: 700;
+              font-weight: 900;
               color: hsl(var(--foreground));
               order: -1;
               width: 100%;
               text-align: center;
+              text-transform: uppercase;
+              letter-spacing: 0.1em;
+              font-style: italic;
             }
             @media (min-width: 768px) {
               .rbc-toolbar-label {
@@ -409,51 +436,58 @@ export default function CalendarPage() {
             }
             .rbc-btn-group {
               display: flex;
-              gap: 2px;
-              background-color: hsl(var(--background));
-              padding: 2px;
-              border-radius: 8px;
-              border: 1px solid hsl(var(--border));
+              gap: 4px;
+              background-color: hsl(var(--background) / 0.6);
+              padding: 4px;
+              border-radius: 12px;
+              border: 1px solid hsl(var(--primary) / 0.05);
+              backdrop-filter: blur(12px);
             }
             .rbc-toolbar button {
-              padding: 6px 12px;
-              border-radius: 6px;
-              font-weight: 500;
+              padding: 8px 16px;
+              border-radius: 8px;
+              font-weight: 900;
               border: none !important;
               background: transparent;
               color: hsl(var(--muted-foreground));
-              font-size: 0.875rem;
-              transition: all 0.2s;
+              font-size: 10px;
+              text-transform: uppercase;
+              letter-spacing: 0.1em;
+              transition: all 0.3s;
             }
             .rbc-toolbar button:hover {
-              background-color: hsl(var(--accent));
-              color: hsl(var(--accent-foreground));
+              background-color: hsl(var(--primary) / 0.05);
+              color: hsl(var(--primary));
             }
             .rbc-toolbar button.rbc-active {
               background-color: hsl(var(--primary));
-              color: hsl(var(--primary-foreground));
-              box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+              color: white;
+              box-shadow: 0 4px 12px rgba(var(--primary), 0.3);
             }
-            .rbc-month-view {
-              border: none;
-              background: transparent;
+            .rbc-month-row {
+              border-bottom: 1px solid hsl(var(--primary) / 0.05) !important;
             }
             .rbc-day-bg + .rbc-day-bg {
-              border-left: 1px solid hsl(var(--border) / 0.5);
-            }
-            .rbc-month-row + .rbc-month-row {
-              border-top: 1px solid hsl(var(--border) / 0.5);
+              border-left: 1px solid hsl(var(--primary) / 0.05) !important;
             }
             .rbc-date-cell {
-              padding: 6px;
-              font-size: 0.8125rem;
-              font-weight: 500;
+              padding: 12px;
+              font-size: 11px;
+              font-weight: 900;
+              opacity: 0.4;
+            }
+            .rbc-date-cell.rbc-now {
+              opacity: 1;
+              color: hsl(var(--primary));
             }
             .rbc-show-more {
-              font-size: 0.75rem;
-              font-weight: 600;
+              font-size: 9px;
+              font-weight: 900;
+              text-transform: uppercase;
+              letter-spacing: 0.1em;
               color: hsl(var(--primary));
               background: transparent;
+              margin-left: 4px;
             }
             .scrollbar-hide::-webkit-scrollbar {
               display: none;
