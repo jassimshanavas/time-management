@@ -30,16 +30,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { ProjectSelector } from '@/components/projects/project-selector';
+import { ProjectBadge } from '@/components/projects/project-badge';
 
 export default function TimeTrackingPage() {
   const router = useRouter();
-  const { tasks, timeEntries, addTimeEntry, updateTimeEntry, deleteTimeEntry, stopTimeEntry } = useStore();
+  const { tasks, timeEntries, addTimeEntry, updateTimeEntry, deleteTimeEntry, stopTimeEntry, selectedProjectId, projects } = useStore();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [formData, setFormData] = useState({
     category: '',
     description: '',
     taskId: '',
+    projectId: '' as string | undefined,
   });
 
   useEffect(() => {
@@ -50,17 +53,17 @@ export default function TimeTrackingPage() {
   const handleStartTimer = (e: React.FormEvent) => {
     e.preventDefault();
 
-    const newEntry: TimeEntry = {
-      id: Date.now().toString(),
+    const newEntry: Omit<TimeEntry, 'id'> = {
       category: formData.category,
       description: formData.description,
       taskId: formData.taskId || undefined,
+      projectId: formData.projectId || undefined,
       startTime: new Date(),
       isRunning: true,
     };
     addTimeEntry(newEntry);
 
-    setFormData({ category: '', description: '', taskId: '' });
+    setFormData({ category: '', description: '', taskId: '', projectId: '' });
     setIsDialogOpen(false);
   };
 
@@ -114,258 +117,299 @@ export default function TimeTrackingPage() {
     router.push(`/tasks/${taskId}?fromView=time-tracking`);
   };
 
+  // Filter by global project context (Workspace)
+  const filteredTimeEntries = timeEntries.filter((entry) => {
+    if (selectedProjectId !== null) {
+      if (selectedProjectId === 'personal') {
+        if (entry.projectId) return false;
+      } else {
+        if (entry.projectId !== selectedProjectId) return false;
+      }
+    }
+    return true;
+  });
+
+  const sortedFilteredEntries = useMemo(
+    () =>
+      [...filteredTimeEntries].sort(
+        (a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime()
+      ),
+    [filteredTimeEntries]
+  );
+
   return (
     <ProtectedRoute>
       <DataLoader>
         <MainLayout>
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">Time Tracking</h1>
-            <p className="text-muted-foreground">Track your time and productivity</p>
-          </div>
-          <Link href="/time-tracking/calendar">
-            <Button variant="outline">
-              <Calendar className="h-4 w-4 mr-2" />
-              Calendar View
-            </Button>
-          </Link>
-        </div>
-
-        {/* Active Timer */}
-        <Card className="border-2 border-primary">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Clock className="h-5 w-5" />
-              {runningEntry ? 'Active Timer' : 'No Active Timer'}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {runningEntry ? (
-              <div className="space-y-4">
-                <div className="text-center">
-                  <div className="text-5xl font-bold font-mono mb-2">
-                    {getElapsedTime(runningEntry.startTime)}
-                  </div>
-                  <p className="text-lg font-semibold">{runningEntry.category}</p>
-                  {runningEntry.description && (
-                    <p className="text-sm text-muted-foreground">{runningEntry.description}</p>
-                  )}
-                  <p className="text-xs text-muted-foreground mt-2">
-                    Started {formatDistanceToNow(new Date(runningEntry.startTime), { addSuffix: true })}
-                  </p>
-                </div>
-                <Button
-                  onClick={() => handleStopTimer(runningEntry.id)}
-                  variant="destructive"
-                  className="w-full"
-                  size="lg"
-                >
-                  <Square className="h-5 w-5 mr-2" />
-                  Stop Timer
-                </Button>
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div className="flex-1">
+                <h1 className="text-3xl font-bold tracking-tight">Time Tracking</h1>
+                <p className="text-muted-foreground">Track your time and productivity</p>
               </div>
-            ) : (
-              <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button className="w-full" size="lg">
-                    <Play className="h-5 w-5 mr-2" />
-                    Start New Timer
+              <div className="flex items-center gap-3">
+                {selectedProjectId && (
+                  <Badge variant="outline" className="h-10 px-4 hidden md:flex items-center gap-2">
+                    <span className="text-muted-foreground mr-1">Filtered by:</span>
+                    {selectedProjectId === 'personal' ? 'Personal' : projects.find(p => p.id === selectedProjectId)?.name}
+                  </Badge>
+                )}
+                <Link href="/time-tracking/calendar">
+                  <Button variant="outline">
+                    <Calendar className="h-4 w-4 mr-2" />
+                    Calendar View
                   </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Start Time Tracking</DialogTitle>
-                    <DialogDescription>What are you working on?</DialogDescription>
-                  </DialogHeader>
-                  <form onSubmit={handleStartTimer} className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="category">Category</Label>
-                      <Input
-                        id="category"
-                        value={formData.category}
-                        onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                        placeholder="e.g., Development, Meeting, Learning"
-                        required
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="description">Description (optional)</Label>
-                      <Input
-                        id="description"
-                        value={formData.description}
-                        onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                        placeholder="Brief description of the task"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Link to Task (optional)</Label>
-                      <Select
-                        value={formData.taskId || 'none'}
-                        onValueChange={(value) =>
-                          setFormData((prev) => ({
-                            ...prev,
-                            taskId: value === 'none' ? '' : value,
-                          }))
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select a task" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">No task link</SelectItem>
-                          {tasks.map((task) => (
-                            <SelectItem key={task.id} value={task.id}>
-                              {task.title}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <p className="text-xs text-muted-foreground">
-                        Link this time entry to a task so you can jump to its details later.
+                </Link>
+              </div>
+            </div>
+
+            {/* Active Timer */}
+            <Card className="border-2 border-primary">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Clock className="h-5 w-5" />
+                  {runningEntry ? 'Active Timer' : 'No Active Timer'}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {runningEntry ? (
+                  <div className="space-y-4">
+                    <div className="text-center">
+                      <div className="text-5xl font-bold font-mono mb-2">
+                        {getElapsedTime(runningEntry.startTime)}
+                      </div>
+                      <p className="text-lg font-semibold">{runningEntry.category}</p>
+                      {runningEntry.description && (
+                        <p className="text-sm text-muted-foreground">{runningEntry.description}</p>
+                      )}
+                      <p className="text-xs text-muted-foreground mt-2">
+                        Started {formatDistanceToNow(new Date(runningEntry.startTime), { addSuffix: true })}
                       </p>
                     </div>
-                    <Button type="submit" className="w-full">
-                      <Play className="h-4 w-4 mr-2" />
-                      Start Timer
-                    </Button>
-                  </form>
-                </DialogContent>
-              </Dialog>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Stats */}
-        <div className="grid gap-4 md:grid-cols-3">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">Today&apos;s Total</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{formatDuration(totalTimeToday)}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">Sessions Today</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{todayEntries.length}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">Categories</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{Object.keys(categorySummary).length}</div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Category Summary */}
-        {Object.keys(categorySummary).length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Time by Category</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                {Object.entries(categorySummary)
-                  .sort(([, a], [, b]) => b - a)
-                  .map(([category, duration]) => (
-                    <div key={category} className="flex items-center justify-between p-2 border rounded">
-                      <span className="font-medium">{category}</span>
-                      <Badge variant="secondary">{formatDuration(duration)}</Badge>
-                    </div>
-                  ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Recent Entries */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Recent Time Entries</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {timeEntries.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-4">
-                  No time entries yet. Start tracking your time!
-                </p>
-              ) : (
-                sortedEntries.slice(0, 10).map((entry) => (
-                    <div
-                      key={entry.id}
-                      className={`flex items-center justify-between p-3 border rounded hover:shadow-sm transition-shadow ${
-                        entry.taskId ? 'cursor-pointer' : ''
-                      }`}
-                      onClick={() => entry.taskId && handleNavigateToTask(entry.taskId)}
+                    <Button
+                      onClick={() => handleStopTimer(runningEntry.id)}
+                      variant="destructive"
+                      className="w-full"
+                      size="lg"
                     >
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-semibold">{entry.category}</span>
-                          {entry.isRunning && (
-                            <Badge variant="default" className="animate-pulse">
-                              Running
-                            </Badge>
+                      <Square className="h-5 w-5 mr-2" />
+                      Stop Timer
+                    </Button>
+                  </div>
+                ) : (
+                  <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                    <DialogTrigger asChild>
+                      <Button className="w-full" size="lg">
+                        <Play className="h-5 w-5 mr-2" />
+                        Start New Timer
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Start Time Tracking</DialogTitle>
+                        <DialogDescription>What are you working on?</DialogDescription>
+                      </DialogHeader>
+                      <form onSubmit={handleStartTimer} className="space-y-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="category">Category</Label>
+                          <Input
+                            id="category"
+                            value={formData.category}
+                            onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                            placeholder="e.g., Development, Meeting, Learning"
+                            required
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="description">Description (optional)</Label>
+                          <Input
+                            id="description"
+                            value={formData.description}
+                            onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                            placeholder="Brief description of the task"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Link to Task (optional)</Label>
+                          <Select
+                            value={formData.taskId || 'none'}
+                            onValueChange={(value) =>
+                              setFormData((prev) => ({
+                                ...prev,
+                                taskId: value === 'none' ? '' : value,
+                              }))
+                            }
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select a task" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">No task link</SelectItem>
+                              {tasks.map((task) => (
+                                <SelectItem key={task.id} value={task.id}>
+                                  {task.title}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <p className="text-xs text-muted-foreground">
+                            Link this time entry to a task so you can jump to its details later.
+                          </p>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="projectId">Project (optional)</Label>
+                          <ProjectSelector
+                            value={formData.projectId}
+                            onChange={(value) => setFormData({ ...formData, projectId: value })}
+                            placeholder="Select a project"
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            Assign this time entry to a project
+                          </p>
+                        </div>
+                        <Button type="submit" className="w-full">
+                          <Play className="h-4 w-4 mr-2" />
+                          Start Timer
+                        </Button>
+                      </form>
+                    </DialogContent>
+                  </Dialog>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Stats */}
+            <div className="grid gap-4 md:grid-cols-3">
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium">Today&apos;s Total</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{formatDuration(totalTimeToday)}</div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium">Sessions Today</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{todayEntries.length}</div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium">Categories</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{Object.keys(categorySummary).length}</div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Category Summary */}
+            {Object.keys(categorySummary).length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Time by Category</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    {Object.entries(categorySummary)
+                      .sort(([, a], [, b]) => b - a)
+                      .map(([category, duration]) => (
+                        <div key={category} className="flex items-center justify-between p-2 border rounded">
+                          <span className="font-medium">{category}</span>
+                          <Badge variant="secondary">{formatDuration(duration)}</Badge>
+                        </div>
+                      ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Recent Entries */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Recent Time Entries</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {filteredTimeEntries.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-4">
+                      {timeEntries.length === 0
+                        ? 'No time entries yet. Start tracking your time!'
+                        : 'No time entries found for this filter'}
+                    </p>
+                  ) : (
+                    sortedFilteredEntries.slice(0, 10).map((entry) => (
+                      <div
+                        key={entry.id}
+                        className={`flex items-center justify-between p-3 border rounded hover:shadow-sm transition-shadow ${entry.taskId ? 'cursor-pointer' : ''
+                          }`}
+                        onClick={() => entry.taskId && handleNavigateToTask(entry.taskId)}
+                      >
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-semibold">{entry.category}</span>
+                            {entry.projectId && <ProjectBadge projectId={entry.projectId} />}
+                            {entry.isRunning && (
+                              <Badge variant="default" className="animate-pulse">
+                                Running
+                              </Badge>
+                            )}
+                            {entry.taskId && (
+                              <Badge variant="outline">
+                                Linked Task
+                              </Badge>
+                            )}
+                          </div>
+                          {entry.description && (
+                            <p className="text-sm text-muted-foreground">{entry.description}</p>
                           )}
                           {entry.taskId && (
-                            <Badge variant="outline">
-                              Linked Task
-                            </Badge>
+                            <p className="text-xs text-muted-foreground">
+                              Task: {findTaskTitle(entry.taskId) || 'Unknown task'}
+                            </p>
                           )}
-                        </div>
-                        {entry.description && (
-                          <p className="text-sm text-muted-foreground">{entry.description}</p>
-                        )}
-                        {entry.taskId && (
-                          <p className="text-xs text-muted-foreground">
-                            Task: {findTaskTitle(entry.taskId) || 'Unknown task'}
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {format(new Date(entry.startTime), 'MMM d, h:mm a')}
+                            {entry.endTime && ` - ${format(new Date(entry.endTime), 'h:mm a')}`}
                           </p>
-                        )}
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {format(new Date(entry.startTime), 'MMM d, h:mm a')}
-                          {entry.endTime && ` - ${format(new Date(entry.endTime), 'h:mm a')}`}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {entry.taskId && (
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {entry.taskId && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleNavigateToTask(entry.taskId!);
+                              }}
+                            >
+                              View Task
+                            </Button>
+                          )}
+                          {entry.duration !== undefined && (
+                            <Badge variant="outline">{formatDuration(entry.duration)}</Badge>
+                          )}
                           <Button
                             size="sm"
-                            variant="outline"
+                            variant="ghost"
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleNavigateToTask(entry.taskId!);
+                              deleteTimeEntry(entry.id);
                             }}
                           >
-                            View Task
+                            <Trash2 className="h-4 w-4" />
                           </Button>
-                        )}
-                        {entry.duration !== undefined && (
-                          <Badge variant="outline">{formatDuration(entry.duration)}</Badge>
-                        )}
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            deleteTimeEntry(entry.id);
-                          }}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        </div>
                       </div>
-                    </div>
-                  ))
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+                    ))
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </MainLayout>
       </DataLoader>
     </ProtectedRoute>

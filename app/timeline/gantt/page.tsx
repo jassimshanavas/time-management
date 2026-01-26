@@ -1,156 +1,100 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useMemo } from 'react';
 import { MainLayout } from '@/components/layout/main-layout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useStore } from '@/lib/store';
-import { 
-  ChevronLeft, 
-  ChevronRight, 
-  ZoomIn, 
-  ZoomOut, 
+import {
+  ChevronLeft,
+  ChevronRight,
+  Filter,
   Calendar,
+  CheckCircle2,
+  Circle,
+  AlertCircle,
   ArrowLeft,
-  CheckSquare,
-  Target,
-  Clock
 } from 'lucide-react';
-import { 
-  format, 
-  addDays, 
-  startOfWeek, 
-  endOfWeek, 
-  eachDayOfInterval,
-  isSameDay,
-  differenceInDays,
-  startOfMonth,
-  endOfMonth,
-  addMonths,
-  subMonths
-} from 'date-fns';
-import Link from 'next/link';
 import { ProtectedRoute } from '@/components/protected-route';
 import { DataLoader } from '@/components/data-loader';
+import Link from 'next/link';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, differenceInDays, addMonths, subMonths, isSameDay, isWithinInterval } from 'date-fns';
 
-export default function GanttTimelinePage() {
-  const router = useRouter();
-  const { tasks, goals, timeEntries } = useStore();
+export default function GanttViewPage() {
+  const { tasks, projects } = useStore();
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [viewMode, setViewMode] = useState<'day' | 'week' | 'month' | 'quarter'>('week');
-  const [selectedItem, setSelectedItem] = useState<string | null>(null);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | undefined>();
+  const [viewMode, setViewMode] = useState<'month' | 'quarter'>('month');
 
-  // Calculate date range based on view mode
-  const getDateRange = () => {
-    switch (viewMode) {
-      case 'day':
-        return {
-          start: currentDate,
-          end: currentDate,
-        };
-      case 'week':
-        return {
-          start: startOfWeek(currentDate, { weekStartsOn: 1 }),
-          end: endOfWeek(currentDate, { weekStartsOn: 1 }),
-        };
-      case 'month':
-        return {
-          start: startOfMonth(currentDate),
-          end: endOfMonth(currentDate),
-        };
-      case 'quarter':
-        const quarterStart = new Date(currentDate.getFullYear(), Math.floor(currentDate.getMonth() / 3) * 3, 1);
-        const quarterEnd = new Date(quarterStart.getFullYear(), quarterStart.getMonth() + 3, 0);
-        return { start: quarterStart, end: quarterEnd };
-      default:
-        return {
-          start: startOfMonth(currentDate),
-          end: endOfMonth(currentDate),
-        };
-    }
-  };
-
-  const { start: rangeStart, end: rangeEnd } = getDateRange();
-  const days = eachDayOfInterval({ start: rangeStart, end: rangeEnd });
-  
-  // For day view, create hourly columns (24 hours)
-  const hours = viewMode === 'day' ? Array.from({ length: 24 }, (_, i) => i) : [];
-
-  // Prepare timeline items
-  const timelineItems = [
-    ...tasks
-      .filter((task) => task.deadline)
-      .map((task) => ({
-        id: task.id,
-        type: 'task' as const,
-        title: task.title,
-        startDate: task.createdAt,
-        endDate: task.deadline!,
-        status: task.status,
-        priority: task.priority,
-        color: task.priority === 'high' ? 'bg-red-500' : task.priority === 'medium' ? 'bg-orange-500' : 'bg-blue-500',
-      })),
-    ...goals.map((goal) => ({
-      id: goal.id,
-      type: 'goal' as const,
-      title: goal.title,
-      startDate: goal.createdAt,
-      endDate: goal.targetDate || new Date(goal.createdAt.getTime() + 90 * 24 * 60 * 60 * 1000),
-      progress: goal.progress,
-      color: 'bg-emerald-500',
-    })),
-  ];
-
-  // Calculate bar position and width
-  const getBarStyle = (startDate: Date, endDate: Date) => {
-    const totalDays = days.length;
-    const startDay = differenceInDays(new Date(startDate), rangeStart);
-    const duration = differenceInDays(new Date(endDate), new Date(startDate)) + 1;
-    
-    const left = Math.max(0, (startDay / totalDays) * 100);
-    const width = Math.min(100 - left, (duration / totalDays) * 100);
-    
-    return {
-      left: `${left}%`,
-      width: `${width}%`,
-    };
-  };
-
-  const navigatePrevious = () => {
-    if (viewMode === 'day') {
-      setCurrentDate(addDays(currentDate, -1));
-    } else if (viewMode === 'week') {
-      setCurrentDate(addDays(currentDate, -7));
-    } else if (viewMode === 'month') {
-      setCurrentDate(subMonths(currentDate, 1));
+  const dateRange = useMemo(() => {
+    if (viewMode === 'month') {
+      return {
+        start: startOfMonth(currentDate),
+        end: endOfMonth(currentDate),
+      };
     } else {
-      setCurrentDate(subMonths(currentDate, 3));
+      const start = startOfMonth(currentDate);
+      const end = endOfMonth(addMonths(currentDate, 2));
+      return { start, end };
+    }
+  }, [currentDate, viewMode]);
+
+  const days = eachDayOfInterval(dateRange);
+
+  const filteredTasks = useMemo(() => {
+    return tasks.filter((task) => {
+      if (!task.deadline) return false;
+      if (selectedProjectId && task.projectId !== selectedProjectId) return false;
+
+      const taskDate = new Date(task.deadline);
+      return isWithinInterval(taskDate, dateRange);
+    });
+  }, [tasks, selectedProjectId, dateRange]);
+
+  const tasksByProject = useMemo(() => {
+    const grouped: Record<string, typeof tasks> = {};
+
+    filteredTasks.forEach((task) => {
+      const projectId = task.projectId || '__none__';
+      if (!grouped[projectId]) {
+        grouped[projectId] = [];
+      }
+      grouped[projectId].push(task);
+    });
+
+    return grouped;
+  }, [filteredTasks]);
+
+  const getProject = (projectId: string) => {
+    if (projectId === '__none__') return null;
+    return projects.find((p) => p.id === projectId);
+  };
+
+  const getTaskPosition = (deadline: Date) => {
+    return differenceInDays(new Date(deadline), dateRange.start);
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'done': return 'bg-green-500';
+      case 'in-progress': return 'bg-blue-500';
+      default: return 'bg-gray-400';
     }
   };
 
-  const navigateNext = () => {
-    if (viewMode === 'day') {
-      setCurrentDate(addDays(currentDate, 1));
-    } else if (viewMode === 'week') {
-      setCurrentDate(addDays(currentDate, 7));
-    } else if (viewMode === 'month') {
-      setCurrentDate(addMonths(currentDate, 1));
-    } else {
-      setCurrentDate(addMonths(currentDate, 3));
-    }
-  };
-
-  const getTypeIcon = (type: string) => {
-    switch (type) {
-      case 'task':
-        return <CheckSquare className="h-4 w-4" />;
-      case 'goal':
-        return <Target className="h-4 w-4" />;
-      default:
-        return <Clock className="h-4 w-4" />;
+  const getPriorityColor = (priority: string) => {
+    switch (priority) {
+      case 'high': return 'border-red-500';
+      case 'medium': return 'border-yellow-500';
+      default: return 'border-gray-300';
     }
   };
 
@@ -158,90 +102,99 @@ export default function GanttTimelinePage() {
     <ProtectedRoute>
       <DataLoader>
         <MainLayout>
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">Timeline - Gantt View</h1>
-            <p className="text-muted-foreground">Visualize your tasks and goals over time</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Link href="/timeline">
-              <Button variant="outline">
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Activity View
-              </Button>
-            </Link>
-          </div>
-        </div>
-
-        {/* Controls */}
-        <Card>
-          <CardContent className="p-4">
+          <div className="space-y-6">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Button variant="outline" size="icon" onClick={navigatePrevious}>
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
-                <Button variant="outline" onClick={() => setCurrentDate(new Date())}>
-                  Today
-                </Button>
-                <Button variant="outline" size="icon" onClick={navigateNext}>
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-                <div className="ml-4 font-semibold">
-                  {viewMode === 'day' && format(currentDate, 'EEEE, MMMM d, yyyy')}
-                  {viewMode === 'week' && `${format(rangeStart, 'MMM d')} - ${format(rangeEnd, 'MMM d, yyyy')}`}
-                  {viewMode === 'month' && format(currentDate, 'MMMM yyyy')}
-                  {viewMode === 'quarter' && `Q${Math.floor(currentDate.getMonth() / 3) + 1} ${currentDate.getFullYear()}`}
+              <div className="flex items-center gap-4">
+                <Link href="/timeline">
+                  <Button variant="ghost" size="icon">
+                    <ArrowLeft className="h-5 w-5" />
+                  </Button>
+                </Link>
+                <div>
+                  <h1 className="text-3xl font-bold tracking-tight">Gantt Timeline</h1>
+                  <p className="text-muted-foreground">Visual project timeline</p>
                 </div>
               </div>
-
-              <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as any)}>
-                <TabsList>
-                  <TabsTrigger value="day">Day</TabsTrigger>
-                  <TabsTrigger value="week">Week</TabsTrigger>
-                  <TabsTrigger value="month">Month</TabsTrigger>
-                  <TabsTrigger value="quarter">Quarter</TabsTrigger>
-                </TabsList>
-              </Tabs>
+              <Select value={viewMode} onValueChange={(v: 'month' | 'quarter') => setViewMode(v)}>
+                <SelectTrigger className="w-32">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="month">Month</SelectItem>
+                  <SelectItem value="quarter">Quarter</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-          </CardContent>
-        </Card>
 
-        {/* Gantt Chart */}
-        <Card>
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <div className="min-w-[800px]">
-                {/* Header Row */}
-                <div className="grid grid-cols-[250px_1fr] border-b bg-muted/50">
-                  <div className="p-3 font-semibold border-r">Item</div>
-                  {viewMode === 'day' ? (
-                    <div className="grid" style={{ gridTemplateColumns: `repeat(${hours.length}, 1fr)` }}>
-                      {hours.map((hour) => (
-                        <div
-                          key={hour}
-                          className="p-2 text-center text-xs border-r"
-                        >
-                          <div className="font-medium">
-                            {hour === 0 ? '12 AM' : hour < 12 ? `${hour} AM` : hour === 12 ? '12 PM' : `${hour - 12} PM`}
-                          </div>
-                        </div>
+            <Card className="p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <Button variant="outline" size="icon" onClick={() => setCurrentDate(viewMode === 'month' ? subMonths(currentDate, 1) : subMonths(currentDate, 3))}>
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <Button variant="outline" onClick={() => setCurrentDate(new Date())}>
+                      Today
+                    </Button>
+                    <Button variant="outline" size="icon" onClick={() => setCurrentDate(viewMode === 'month' ? addMonths(currentDate, 1) : addMonths(currentDate, 3))}>
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <div className="text-lg font-semibold">
+                    {format(dateRange.start, 'MMM yyyy')}
+                    {viewMode === 'quarter' && ` - ${format(dateRange.end, 'MMM yyyy')}`}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Filter className="h-4 w-4 text-muted-foreground" />
+                  <Select value={selectedProjectId || '__all__'} onValueChange={(v) => setSelectedProjectId(v === '__all__' ? undefined : v)}>
+                    <SelectTrigger className="w-48">
+                      <SelectValue placeholder="All Projects" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__all__">All Projects</SelectItem>
+                      {projects.map((project) => (
+                        <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>
                       ))}
-                    </div>
-                  ) : (
-                    <div className="grid" style={{ gridTemplateColumns: `repeat(${days.length}, 1fr)` }}>
-                      {days.map((day, idx) => {
+                      <SelectItem value="__none__">Personal</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </Card>
+
+            <Card className="p-4">
+              <div className="flex items-center gap-6 text-sm flex-wrap">
+                <div className="flex items-center gap-2">
+                  <Circle className="h-4 w-4 text-gray-400" />
+                  <span className="text-muted-foreground">To Do</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Circle className="h-4 w-4 text-blue-500" />
+                  <span className="text-muted-foreground">In Progress</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4 text-green-500" />
+                  <span className="text-muted-foreground">Completed</span>
+                </div>
+              </div>
+            </Card>
+
+            <Card>
+              <CardContent className="p-6 overflow-x-auto">
+                <div className="min-w-[800px]">
+                  <div className="flex border-b">
+                    <div className="w-48 shrink-0 p-2 font-semibold sticky left-0 bg-background z-10">Task</div>
+                    <div className="flex-1 flex">
+                      {days.map((day, index) => {
                         const isToday = isSameDay(day, new Date());
+                        const isWeekend = day.getDay() === 0 || day.getDay() === 6;
                         return (
                           <div
-                            key={idx}
-                            className={`p-2 text-center text-xs border-r ${
-                              isToday ? 'bg-primary/10 font-semibold' : ''
-                            }`}
+                            key={index}
+                            className={`flex-1 min-w-[40px] text-center p-2 text-xs border-r ${isToday ? 'bg-primary/10 font-bold' : ''
+                              } ${isWeekend ? 'bg-muted/50' : ''}`}
                           >
-                            <div>{format(day, 'EEE')}</div>
                             <div className={isToday ? 'text-primary' : 'text-muted-foreground'}>
                               {format(day, 'd')}
                             </div>
@@ -249,156 +202,71 @@ export default function GanttTimelinePage() {
                         );
                       })}
                     </div>
-                  )}
-                </div>
+                  </div>
 
-                {/* Timeline Items */}
-                <div className="divide-y">
-                  {timelineItems.length === 0 ? (
-                    <div className="p-8 text-center text-muted-foreground">
-                      No items with deadlines to display in timeline
+                  {Object.keys(tasksByProject).length === 0 ? (
+                    <div className="p-12 text-center text-muted-foreground">
+                      <Calendar className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                      <p>No tasks in this period</p>
                     </div>
                   ) : (
-                    timelineItems.map((item) => (
-                      <div
-                        key={item.id}
-                        className={`grid grid-cols-[250px_1fr] hover:bg-accent/50 transition-colors ${
-                          selectedItem === item.id ? 'bg-accent' : ''
-                        }`}
-                        onClick={() => {
-                          setSelectedItem(item.id);
-                          if (item.type === 'task') {
-                            router.push(`/tasks/${item.id}?fromView=time-tracking-gantt`);
-                          }
-                        }}
-                      >
-                        {/* Item Info */}
-                        <div className="p-3 border-r flex items-center gap-2">
-                          <div className={`p-1 rounded ${item.color} text-white`}>
-                            {getTypeIcon(item.type)}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="font-medium truncate">{item.title}</div>
-                            <div className="flex items-center gap-2 mt-1">
-                              <Badge variant="outline" className="text-xs capitalize">
-                                {item.type}
-                              </Badge>
-                              {item.type === 'task' && (
-                                <Badge
-                                  variant={item.status === 'done' ? 'default' : 'secondary'}
-                                  className="text-xs"
-                                >
-                                  {item.status}
-                                </Badge>
-                              )}
-                              {item.type === 'goal' && (
-                                <span className="text-xs text-muted-foreground">
-                                  {item.progress}%
-                                </span>
+                    Object.entries(tasksByProject).map(([projectId, projectTasks]) => {
+                      const project = getProject(projectId);
+                      return (
+                        <div key={projectId} className="border-b">
+                          <div className="flex items-center bg-muted/30">
+                            <div className="w-48 shrink-0 p-3 font-medium flex items-center gap-2">
+                              {project ? (
+                                <>
+                                  <div className="h-3 w-3 rounded-full" style={{ backgroundColor: project.color }} />
+                                  <span>{project.name}</span>
+                                </>
+                              ) : (
+                                <span>Personal</span>
                               )}
                             </div>
                           </div>
-                        </div>
-
-                        {/* Timeline Bar */}
-                        <div className="relative h-16 border-r">
-                          {/* Grid lines */}
-                          {viewMode === 'day' ? (
-                            <div className="absolute inset-0 grid" style={{ gridTemplateColumns: `repeat(${hours.length}, 1fr)` }}>
-                              {hours.map((hour) => (
-                                <div key={hour} className="border-r" />
-                              ))}
-                            </div>
-                          ) : (
-                            <div className="absolute inset-0 grid" style={{ gridTemplateColumns: `repeat(${days.length}, 1fr)` }}>
-                              {days.map((_, idx) => (
-                                <div key={idx} className="border-r" />
-                              ))}
-                            </div>
-                          )}
-
-                          {/* Current hour indicator (for day view) */}
-                          {viewMode === 'day' && isSameDay(currentDate, new Date()) && (
-                            <div
-                              className="absolute top-0 bottom-0 w-px bg-primary z-10"
-                              style={{ left: `${(new Date().getHours() / 24) * 100}%` }}
-                            />
-                          )}
-
-                          {/* Today indicator (for other views) */}
-                          {viewMode !== 'day' && days.map((day, idx) => {
-                            if (isSameDay(day, new Date())) {
-                              return (
-                                <div
-                                  key={idx}
-                                  className="absolute top-0 bottom-0 w-px bg-primary z-10"
-                                  style={{ left: `${(idx / days.length) * 100}%` }}
-                                />
-                              );
-                            }
-                            return null;
+                          {projectTasks.map((task) => {
+                            const dayPosition = getTaskPosition(task.deadline!);
+                            return (
+                              <div key={task.id} className="flex items-center hover:bg-accent/50">
+                                <div className="w-48 shrink-0 p-2">
+                                  <div className="flex items-center gap-2">
+                                    {task.status === 'done' ? (
+                                      <CheckCircle2 className="h-4 w-4 text-green-500" />
+                                    ) : (
+                                      <Circle className="h-4 w-4 text-gray-400" />
+                                    )}
+                                    <span className="text-sm truncate">{task.title}</span>
+                                  </div>
+                                </div>
+                                <div className="flex-1 flex relative h-12">
+                                  {days.map((day, index) => (
+                                    <div key={index} className="flex-1 min-w-[40px] border-r" />
+                                  ))}
+                                  {dayPosition >= 0 && dayPosition < days.length && (
+                                    <div
+                                      className="absolute top-1/2 -translate-y-1/2"
+                                      style={{
+                                        left: `${(dayPosition / days.length) * 100}%`,
+                                        width: `${(1 / days.length) * 100}%`,
+                                      }}
+                                    >
+                                      <div className={`mx-1 h-6 rounded border-2 ${getPriorityColor(task.priority)} ${getStatusColor(task.status)}`} />
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            );
                           })}
-
-                          {/* Progress Bar */}
-                          <div
-                            className={`absolute top-1/2 -translate-y-1/2 h-8 ${item.color} rounded-md shadow-sm cursor-pointer hover:shadow-md transition-shadow flex items-center px-2`}
-                            style={getBarStyle(item.startDate, item.endDate)}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (item.type === 'task') {
-                                router.push(`/tasks/${item.id}?fromView=time-tracking-gantt`);
-                              }
-                            }}
-                          >
-                            <div className="text-white text-xs font-medium truncate">
-                              {item.title}
-                            </div>
-                            {item.type === 'goal' && (
-                              <div
-                                className="absolute inset-0 bg-white/30 rounded-md"
-                                style={{ width: `${item.progress}%` }}
-                              />
-                            )}
-                          </div>
                         </div>
-                      </div>
-                    ))
+                      );
+                    })
                   )}
                 </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Legend */}
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-6 text-sm">
-              <div className="font-semibold">Legend:</div>
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 bg-red-500 rounded" />
-                <span>High Priority Task</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 bg-orange-500 rounded" />
-                <span>Medium Priority Task</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 bg-blue-500 rounded" />
-                <span>Low Priority Task</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 bg-emerald-500 rounded" />
-                <span>Goal</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-px h-4 bg-primary" />
-                <span>Today</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+              </CardContent>
+            </Card>
+          </div>
         </MainLayout>
       </DataLoader>
     </ProtectedRoute>

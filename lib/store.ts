@@ -1,6 +1,6 @@
 // Global State Management using Zustand with Firebase
 import { create } from 'zustand';
-import type { Task, Reminder, Note, Goal, Habit, TimeEntry, User, AppSettings } from '@/types';
+import type { Task, Reminder, Note, Goal, Habit, TimeEntry, User, AppSettings, Project } from '@/types';
 import type { UserGamification, XPReward, Achievement } from '@/types/gamification';
 import * as firebaseService from './firebase-service';
 import * as gamificationService from './firebase-gamification';
@@ -75,6 +75,17 @@ interface AppStore {
   deleteTimeEntry: (id: string) => Promise<void>;
   stopTimeEntry: (id: string) => Promise<void>;
 
+  // Projects
+  projects: Project[];
+  loadProjects: () => Promise<void>;
+  addProject: (project: Omit<Project, 'id' | 'userId'>) => Promise<void>;
+  updateProject: (id: string, project: Partial<Project>) => Promise<void>;
+  deleteProject: (id: string) => Promise<void>;
+
+  // Workspace / Global Filter
+  selectedProjectId: string | null;
+  setSelectedProjectId: (id: string | null) => void;
+
   // Utility
   loadAllData: () => Promise<void>;
   clearAllData: () => Promise<void>;
@@ -84,6 +95,99 @@ export const useStore = create<AppStore>()((set, get) => ({
   // User & Auth
   userId: null,
   setUserId: (id) => set({ userId: id }),
+
+  // Gamification
+  gamification: null,
+  loadGamification: async () => {
+    const userId = get().userId;
+    if (!userId) return;
+    try {
+      const data = await gamificationService.getUserGamification(userId);
+      if (data) set({ gamification: data });
+    } catch (error) {
+      console.error('Error loading gamification:', error);
+    }
+  },
+  initializeGamification: async () => {
+    const userId = get().userId;
+    if (!userId) return;
+    try {
+      await gamificationService.initializeUserGamification(userId);
+      const data = await gamificationService.getUserGamification(userId);
+      if (data) set({ gamification: data });
+    } catch (error) {
+      console.error('Error initializing gamification:', error);
+    }
+  },
+  addXP: async (xpReward) => {
+    const { userId, gamification, checkAndUpdateAchievements } = get();
+    if (!userId || !gamification) return [];
+
+    try {
+      const newXP = gamification.xp + xpReward.amount;
+      const newLevel = calculateLevel(newXP);
+
+      await gamificationService.updateUserXP(userId, xpReward.amount);
+      if (newLevel > gamification.level) {
+        await gamificationService.updateUserLevel(userId, newLevel);
+      }
+
+      set((state) => ({
+        gamification: state.gamification ? {
+          ...state.gamification,
+          xp: newXP,
+          level: newLevel
+        } : null
+      }));
+
+      return await checkAndUpdateAchievements();
+    } catch (error) {
+      console.error('Error adding XP:', error);
+      return [];
+    }
+  },
+  updateStats: async (stats) => {
+    const { userId, gamification } = get();
+    if (!userId || !gamification) return;
+
+    try {
+      await gamificationService.updateUserStats(userId, stats);
+      set((state) => ({
+        gamification: state.gamification ? {
+          ...state.gamification,
+          stats: { ...state.gamification.stats, ...stats }
+        } : null
+      }));
+    } catch (error) {
+      console.error('Error updating stats:', error);
+    }
+  },
+  checkAndUpdateAchievements: async () => {
+    const { userId, gamification } = get();
+    if (!userId || !gamification) return [];
+
+    try {
+      const updatedAchievements = checkAchievements(gamification.stats, gamification.achievements);
+      const newlyUnlocked = getNewlyUnlockedAchievements(gamification.achievements, updatedAchievements);
+
+      if (newlyUnlocked.length > 0) {
+        await gamificationService.updateAchievements(userId, updatedAchievements);
+        set((state) => ({
+          gamification: state.gamification ? {
+            ...state.gamification,
+            achievements: updatedAchievements
+          } : null
+        }));
+      }
+
+      return newlyUnlocked;
+    } catch (error) {
+      console.error('Error checking achievements:', error);
+      return [];
+    }
+  },
+
+
 
   // Settings
   settings: {
@@ -470,6 +574,53 @@ export const useStore = create<AppStore>()((set, get) => ({
     }
   },
 
+  // Projects
+  projects: [],
+  loadProjects: async () => {
+    const userId = get().userId;
+    if (!userId) return;
+    try {
+      const projects = await firebaseService.getProjects(userId);
+      set({ projects });
+    } catch (error) {
+      console.error('Error loading projects:', error);
+    }
+  },
+  addProject: async (project) => {
+    const userId = get().userId;
+    if (!userId) return;
+    try {
+      const projectId = await firebaseService.addProject(userId, project);
+      set((state) => ({ projects: [...state.projects, { ...project, id: projectId, userId }] }));
+    } catch (error) {
+      console.error('Error adding project:', error);
+    }
+  },
+  updateProject: async (id, updatedProject) => {
+    try {
+      await firebaseService.updateProject(id, { ...updatedProject, updatedAt: new Date() });
+      set((state) => ({
+        projects: state.projects.map((project) =>
+          project.id === id ? { ...project, ...updatedProject, updatedAt: new Date() } : project
+        ),
+      }));
+    } catch (error) {
+      console.error('Error updating project:', error);
+    }
+  },
+  deleteProject: async (id) => {
+    try {
+      await firebaseService.deleteProject(id);
+      set((state) => ({ projects: state.projects.filter((project) => project.id !== id) }));
+    } catch (error) {
+      console.error('Error deleting project:', error);
+    }
+  },
+
+  // Workspace / Global Filter
+  selectedProjectId: null,
+  setSelectedProjectId: (id) => set({ selectedProjectId: id }),
+
   // Utility
   loadAllData: async () => {
     await Promise.all([
@@ -479,6 +630,7 @@ export const useStore = create<AppStore>()((set, get) => ({
       get().loadGoals(),
       get().loadHabits(),
       get().loadTimeEntries(),
+      get().loadProjects(),
       get().loadSettings(),
     ]);
   },
@@ -494,6 +646,7 @@ export const useStore = create<AppStore>()((set, get) => ({
         goals: [],
         habits: [],
         timeEntries: [],
+        projects: [],
       });
     } catch (error) {
       console.error('Error clearing data:', error);

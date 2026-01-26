@@ -14,7 +14,7 @@ import {
   deleteField,
 } from 'firebase/firestore';
 import { db } from './firebase';
-import type { Task, Reminder, Note, Goal, Habit, TimeEntry, User, AppSettings } from '@/types';
+import type { Task, Reminder, Note, Goal, Habit, TimeEntry, User, AppSettings, Project } from '@/types';
 
 // Helper to convert Firestore timestamps to Date objects
 const convertTimestamps = (data: any) => {
@@ -67,13 +67,13 @@ export const addTask = async (userId: string, task: Omit<Task, 'id' | 'userId'>)
 
 export const updateTask = async (taskId: string, updates: Partial<Task>): Promise<void> => {
   const taskRef = doc(db, 'tasks', taskId);
-  
+
   // Check if document exists first
   const taskSnap = await getDoc(taskRef);
   if (!taskSnap.exists()) {
     throw new Error(`Task with ID ${taskId} does not exist in Firestore`);
   }
-  
+
   const data = Object.entries(updates).reduce((acc, [key, value]) => {
     if (value === undefined) {
       acc[key] = deleteField();
@@ -97,7 +97,7 @@ export const updateTask = async (taskId: string, updates: Partial<Task>): Promis
 export const deleteTask = async (taskId: string): Promise<void> => {
   console.log('Firebase deleteTask called with ID:', taskId);
   const taskRef = doc(db, 'tasks', taskId);
-  
+
   // Check if document exists first
   const taskSnap = await getDoc(taskRef);
   if (!taskSnap.exists()) {
@@ -105,7 +105,7 @@ export const deleteTask = async (taskId: string): Promise<void> => {
     // Don't throw error - just let it proceed to remove from local state
     return;
   }
-  
+
   await deleteDoc(taskRef);
   console.log('Firestore deleteDoc completed successfully for:', taskId);
 };
@@ -213,6 +213,37 @@ export const deleteGoal = async (goalId: string): Promise<void> => {
   await deleteDoc(doc(db, 'goals', goalId));
 };
 
+// ==================== PROJECTS ====================
+export const getProjects = async (userId: string): Promise<Project[]> => {
+  const q = query(collection(db, 'projects'), where('userId', '==', userId));
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map((doc) => ({
+    id: doc.id,
+    ...convertTimestamps(doc.data()),
+  })) as Project[];
+};
+
+export const addProject = async (userId: string, project: Omit<Project, 'id' | 'userId'>): Promise<string> => {
+  const docRef = await addDoc(collection(db, 'projects'), {
+    ...project,
+    userId,
+    createdAt: Timestamp.fromDate(project.createdAt),
+    updatedAt: Timestamp.fromDate(project.updatedAt),
+  });
+  return docRef.id;
+};
+
+export const updateProject = async (projectId: string, updates: Partial<Project>): Promise<void> => {
+  const projectRef = doc(db, 'projects', projectId);
+  const data: any = { ...updates };
+  if (data.updatedAt) data.updatedAt = Timestamp.fromDate(data.updatedAt);
+  await updateDoc(projectRef, data);
+};
+
+export const deleteProject = async (projectId: string): Promise<void> => {
+  await deleteDoc(doc(db, 'projects', projectId));
+};
+
 // ==================== HABITS ====================
 export const getHabits = async (userId: string): Promise<Habit[]> => {
   const q = query(collection(db, 'habits'), where('userId', '==', userId));
@@ -312,9 +343,9 @@ export const updateSettings = async (userId: string, settings: AppSettings): Pro
 // ==================== BULK OPERATIONS ====================
 export const clearAllData = async (userId: string): Promise<void> => {
   const batch = writeBatch(db);
-  
-  const collections = ['tasks', 'reminders', 'notes', 'goals', 'habits', 'timeEntries'];
-  
+
+  const collections = ['tasks', 'reminders', 'notes', 'goals', 'habits', 'timeEntries', 'projects'];
+
   for (const collectionName of collections) {
     const q = query(collection(db, collectionName), where('userId', '==', userId));
     const snapshot = await getDocs(q);
@@ -322,18 +353,19 @@ export const clearAllData = async (userId: string): Promise<void> => {
       batch.delete(doc.ref);
     });
   }
-  
+
   await batch.commit();
 };
 
 export const exportAllData = async (userId: string) => {
-  const [tasks, reminders, notes, goals, habits, timeEntries, user, settings] = await Promise.all([
+  const [tasks, reminders, notes, goals, habits, timeEntries, projects, user, settings] = await Promise.all([
     getTasks(userId),
     getReminders(userId),
     getNotes(userId),
     getGoals(userId),
     getHabits(userId),
     getTimeEntries(userId),
+    getProjects(userId),
     getUser(userId),
     getSettings(userId),
   ]);
@@ -345,6 +377,7 @@ export const exportAllData = async (userId: string) => {
     goals,
     habits,
     timeEntries,
+    projects,
     user,
     settings,
     exportDate: new Date().toISOString(),

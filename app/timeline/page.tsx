@@ -5,7 +5,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useStore } from '@/lib/store';
-import { CheckSquare, Bell, TrendingUp, Clock, Calendar, BarChart3 } from 'lucide-react';
+import { CheckSquare, Bell, TrendingUp, Clock, Calendar, BarChart3, Layout } from 'lucide-react';
 import { format, isToday, isYesterday, startOfDay } from 'date-fns';
 import Link from 'next/link';
 import { ProtectedRoute } from '@/components/protected-route';
@@ -103,119 +103,127 @@ export default function TimelinePage() {
     <ProtectedRoute>
       <DataLoader>
         <MainLayout>
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">Timeline</h1>
-            <p className="text-muted-foreground">Your daily activity timeline</p>
-          </div>
-          <Link href="/timeline/gantt">
-            <Button variant="outline">
-              <BarChart3 className="h-4 w-4 mr-2" />
-              Gantt View
-            </Button>
-          </Link>
-        </div>
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-3xl font-bold tracking-tight">Timeline</h1>
+                <p className="text-muted-foreground">Your daily activity timeline</p>
+              </div>
+              <div className="flex items-center gap-4">
+                <Link href="/timeline/day">
+                  <Button className="bg-primary hover:bg-primary/90">
+                    <Layout className="h-4 w-4 mr-2" />
+                    Interactive Planner
+                  </Button>
+                </Link>
+                <Link href="/timeline/gantt">
+                  <Button variant="outline">
+                    <BarChart3 className="h-4 w-4 mr-2" />
+                    Gantt View
+                  </Button>
+                </Link>
+              </div>
+            </div>
 
-        {Object.keys(groupedEvents).length === 0 ? (
-          <Card>
-            <CardContent className="p-8 text-center">
-              <Calendar className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-              <p className="text-muted-foreground">No activity yet. Start tracking your tasks and time!</p>
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="space-y-8">
-            {Object.entries(groupedEvents).map(([dateKey, events]) => {
-              const date = new Date(dateKey);
-              return (
-                <div key={dateKey} className="space-y-4">
-                  <div className="sticky top-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 py-2 z-10">
-                    <h2 className="text-xl font-semibold">{getDateLabel(date)}</h2>
-                    <p className="text-sm text-muted-foreground">{events.length} activities</p>
-                  </div>
+            {Object.keys(groupedEvents).length === 0 ? (
+              <Card>
+                <CardContent className="p-8 text-center">
+                  <Calendar className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+                  <p className="text-muted-foreground">No activity yet. Start tracking your tasks and time!</p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="space-y-8">
+                {Object.entries(groupedEvents).map(([dateKey, events]) => {
+                  const date = new Date(dateKey);
+                  return (
+                    <div key={dateKey} className="space-y-4">
+                      <div className="sticky top-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 py-2 z-10">
+                        <h2 className="text-xl font-semibold">{getDateLabel(date)}</h2>
+                        <p className="text-sm text-muted-foreground">{events.length} activities</p>
+                      </div>
 
-                  <div className="space-y-3 relative before:absolute before:left-[21px] before:top-0 before:bottom-0 before:w-px before:bg-border">
-                    {events.map((event) => (
-                      <div key={event.id} className="relative pl-12">
-                        <div className="absolute left-0 top-1 bg-background p-1 rounded-full border-2">
-                          {getEventIcon(event.type)}
-                        </div>
-                        <Card className={`border-l-4 ${getEventColor(event.type)}`}>
-                          <CardContent className="p-4">
-                            <div className="flex items-start justify-between">
-                              <div className="flex-1">
-                                <div className="flex items-center gap-2 mb-1">
-                                  <Badge variant="outline" className="capitalize">
-                                    {event.type.replace('-', ' ')}
-                                  </Badge>
-                                  <span className="text-xs text-muted-foreground">
-                                    {format(event.timestamp, 'h:mm a')}
-                                  </span>
-                                </div>
-                                <h3 className="font-semibold mb-1">{event.title}</h3>
-                                
-                                {event.type === 'task' && (
-                                  <div className="flex gap-2">
-                                    <Badge
-                                      variant={
-                                        event.metadata.status === 'done'
-                                          ? 'default'
-                                          : 'secondary'
-                                      }
-                                    >
-                                      {event.metadata.status}
-                                    </Badge>
-                                    <Badge
-                                      variant={
-                                        event.metadata.priority === 'high'
-                                          ? 'destructive'
-                                          : 'secondary'
-                                      }
-                                    >
-                                      {event.metadata.priority}
-                                    </Badge>
-                                  </div>
-                                )}
+                      <div className="space-y-3 relative before:absolute before:left-[21px] before:top-0 before:bottom-0 before:w-px before:bg-border">
+                        {events.map((event) => (
+                          <div key={event.id} className="relative pl-12">
+                            <div className="absolute left-0 top-1 bg-background p-1 rounded-full border-2">
+                              {getEventIcon(event.type)}
+                            </div>
+                            <Card className={`border-l-4 ${getEventColor(event.type)}`}>
+                              <CardContent className="p-4">
+                                <div className="flex items-start justify-between">
+                                  <div className="flex-1">
+                                    <div className="flex items-center gap-2 mb-1">
+                                      <Badge variant="outline" className="capitalize">
+                                        {event.type.replace('-', ' ')}
+                                      </Badge>
+                                      <span className="text-xs text-muted-foreground">
+                                        {format(event.timestamp, 'h:mm a')}
+                                      </span>
+                                    </div>
+                                    <h3 className="font-semibold mb-1">{event.title}</h3>
 
-                                {event.type === 'reminder' && event.metadata.completed && (
-                                  <Badge variant="default">Completed</Badge>
-                                )}
+                                    {event.type === 'task' && (
+                                      <div className="flex gap-2">
+                                        <Badge
+                                          variant={
+                                            event.metadata.status === 'done'
+                                              ? 'default'
+                                              : 'secondary'
+                                          }
+                                        >
+                                          {event.metadata.status}
+                                        </Badge>
+                                        <Badge
+                                          variant={
+                                            event.metadata.priority === 'high'
+                                              ? 'destructive'
+                                              : 'secondary'
+                                          }
+                                        >
+                                          {event.metadata.priority}
+                                        </Badge>
+                                      </div>
+                                    )}
 
-                                {event.type === 'habit' && (
-                                  <p className="text-sm text-muted-foreground">
-                                    🔥 Streak: {event.metadata.streak} days
-                                  </p>
-                                )}
+                                    {event.type === 'reminder' && event.metadata.completed && (
+                                      <Badge variant="default">Completed</Badge>
+                                    )}
 
-                                {event.type === 'time-entry' && (
-                                  <div>
-                                    {event.metadata.description && (
-                                      <p className="text-sm text-muted-foreground mb-1">
-                                        {event.metadata.description}
+                                    {event.type === 'habit' && (
+                                      <p className="text-sm text-muted-foreground">
+                                        🔥 Streak: {event.metadata.streak} days
                                       </p>
                                     )}
-                                    {event.metadata.duration && (
-                                      <Badge variant="secondary">
-                                        {Math.floor(event.metadata.duration / 60)}h{' '}
-                                        {event.metadata.duration % 60}m
-                                      </Badge>
+
+                                    {event.type === 'time-entry' && (
+                                      <div>
+                                        {event.metadata.description && (
+                                          <p className="text-sm text-muted-foreground mb-1">
+                                            {event.metadata.description}
+                                          </p>
+                                        )}
+                                        {event.metadata.duration && (
+                                          <Badge variant="secondary">
+                                            {Math.floor(event.metadata.duration / 60)}h{' '}
+                                            {event.metadata.duration % 60}m
+                                          </Badge>
+                                        )}
+                                      </div>
                                     )}
                                   </div>
-                                )}
-                              </div>
-                            </div>
-                          </CardContent>
-                        </Card>
+                                </div>
+                              </CardContent>
+                            </Card>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
-        )}
-      </div>
         </MainLayout>
       </DataLoader>
     </ProtectedRoute>

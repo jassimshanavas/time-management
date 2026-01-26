@@ -25,9 +25,11 @@ import remarkGfm from 'remark-gfm';
 import type { Note } from '@/types';
 import { ProtectedRoute } from '@/components/protected-route';
 import { DataLoader } from '@/components/data-loader';
+import { ProjectSelector } from '@/components/projects/project-selector';
+import { ProjectBadge } from '@/components/projects/project-badge';
 
 export default function NotesPage() {
-  const { notes, addNote, updateNote, deleteNote } = useStore();
+  const { notes, addNote, updateNote, deleteNote, selectedProjectId, projects } = useStore();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingNote, setEditingNote] = useState<Note | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -35,6 +37,7 @@ export default function NotesPage() {
     title: '',
     content: '',
     tags: '',
+    projectId: '' as string | undefined,
   });
   const [previewMode, setPreviewMode] = useState(false);
 
@@ -46,20 +49,21 @@ export default function NotesPage() {
         title: formData.title,
         content: formData.content,
         tags: formData.tags.split(',').map((t) => t.trim()).filter(Boolean),
+        projectId: formData.projectId || undefined,
       });
     } else {
-      const newNote: Note = {
-        id: Date.now().toString(),
+      const newNote: Omit<Note, 'id'> = {
         title: formData.title,
         content: formData.content,
         tags: formData.tags.split(',').map((t) => t.trim()).filter(Boolean),
+        projectId: formData.projectId || undefined,
         createdAt: new Date(),
         updatedAt: new Date(),
       };
       addNote(newNote);
     }
 
-    setFormData({ title: '', content: '', tags: '' });
+    setFormData({ title: '', content: '', tags: '', projectId: '' });
     setEditingNote(null);
     setIsDialogOpen(false);
     setPreviewMode(false);
@@ -71,6 +75,7 @@ export default function NotesPage() {
       title: note.title,
       content: note.content,
       tags: note.tags.join(', '),
+      projectId: note.projectId || '',
     });
     setIsDialogOpen(true);
   };
@@ -80,10 +85,24 @@ export default function NotesPage() {
   };
 
   const filteredNotes = notes.filter(
-    (note) =>
-      note.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      note.content.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      note.tags.some((tag) => tag.toLowerCase().includes(searchQuery.toLowerCase()))
+    (note) => {
+      // Filter by search query
+      const matchesSearch =
+        note.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        note.content.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        note.tags.some((tag) => tag.toLowerCase().includes(searchQuery.toLowerCase()));
+
+      // Filter by global project context (Workspace)
+      if (selectedProjectId !== null) {
+        if (selectedProjectId === 'personal') {
+          if (note.projectId) return false;
+        } else {
+          if (note.projectId !== selectedProjectId) return false;
+        }
+      }
+
+      return matchesSearch;
+    }
   );
 
   const pinnedNotes = filteredNotes.filter((n) => n.pinned);
@@ -124,7 +143,8 @@ export default function NotesPage() {
           <ReactMarkdown remarkPlugins={[remarkGfm]}>{note.content}</ReactMarkdown>
         </div>
         <div className="flex items-center justify-between">
-          <div className="flex gap-1 flex-wrap">
+          <div className="flex gap-1 flex-wrap items-center">
+            {note.projectId && <ProjectBadge projectId={note.projectId} />}
             {note.tags.map((tag) => (
               <Badge key={tag} variant="secondary">
                 {tag}
@@ -143,127 +163,146 @@ export default function NotesPage() {
     <ProtectedRoute>
       <DataLoader>
         <MainLayout>
-      <div className="space-y-6">
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex-1">
-            <h1 className="text-3xl font-bold tracking-tight mb-2">Notes</h1>
-            <div className="relative max-w-md">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search notes..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-          </div>
-          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-            <DialogTrigger asChild>
-              <Button
-                onClick={() => {
-                  setEditingNote(null);
-                  setFormData({ title: '', content: '', tags: '' });
-                  setPreviewMode(false);
-                }}
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                New Note
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>{editingNote ? 'Edit Note' : 'Create New Note'}</DialogTitle>
-                <DialogDescription>
-                  Write your notes in Markdown format
-                </DialogDescription>
-              </DialogHeader>
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="title">Title</Label>
-                  <Input
-                    id="title"
-                    value={formData.title}
-                    onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="content">Content</Label>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setPreviewMode(!previewMode)}
-                    >
-                      {previewMode ? 'Edit' : 'Preview'}
-                    </Button>
-                  </div>
-                  {previewMode ? (
-                    <div className="border rounded-md p-4 min-h-[200px] prose prose-sm dark:prose-invert max-w-none">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                        {formData.content || '*No content yet*'}
-                      </ReactMarkdown>
-                    </div>
-                  ) : (
-                    <Textarea
-                      id="content"
-                      value={formData.content}
-                      onChange={(e) => setFormData({ ...formData, content: e.target.value })}
-                      rows={10}
-                      placeholder="Write your note in Markdown..."
-                      required
+          <div className="space-y-6">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex-1">
+                <h1 className="text-3xl font-bold tracking-tight mb-2">Notes</h1>
+                <div className="flex gap-3">
+                  <div className="relative max-w-md flex-1">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Search notes..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="pl-10"
                     />
+                  </div>
+                  {selectedProjectId && (
+                    <Badge variant="outline" className="h-10 px-4 hidden md:flex items-center gap-2">
+                      <span className="text-muted-foreground mr-1">Filtered by:</span>
+                      {selectedProjectId === 'personal' ? 'Personal' : projects.find(p => p.id === selectedProjectId)?.name}
+                    </Badge>
                   )}
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="tags">Tags (comma-separated)</Label>
-                  <Input
-                    id="tags"
-                    value={formData.tags}
-                    onChange={(e) => setFormData({ ...formData, tags: e.target.value })}
-                    placeholder="work, personal, ideas"
-                  />
-                </div>
-                <Button type="submit" className="w-full">
-                  {editingNote ? 'Update Note' : 'Create Note'}
-                </Button>
-              </form>
-            </DialogContent>
-          </Dialog>
-        </div>
+              </div>
+              <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button
+                    onClick={() => {
+                      setEditingNote(null);
+                      setFormData({ title: '', content: '', tags: '', projectId: '' });
+                      setPreviewMode(false);
+                    }}
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    New Note
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+                  <DialogHeader>
+                    <DialogTitle>{editingNote ? 'Edit Note' : 'Create New Note'}</DialogTitle>
+                    <DialogDescription>
+                      Write your notes in Markdown format
+                    </DialogDescription>
+                  </DialogHeader>
+                  <form onSubmit={handleSubmit} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="title">Title</Label>
+                      <Input
+                        id="title"
+                        value={formData.title}
+                        onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="content">Content</Label>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setPreviewMode(!previewMode)}
+                        >
+                          {previewMode ? 'Edit' : 'Preview'}
+                        </Button>
+                      </div>
+                      {previewMode ? (
+                        <div className="border rounded-md p-4 min-h-[200px] prose prose-sm dark:prose-invert max-w-none">
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                            {formData.content || '*No content yet*'}
+                          </ReactMarkdown>
+                        </div>
+                      ) : (
+                        <Textarea
+                          id="content"
+                          value={formData.content}
+                          onChange={(e) => setFormData({ ...formData, content: e.target.value })}
+                          rows={10}
+                          placeholder="Write your note in Markdown..."
+                          required
+                        />
+                      )}
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="projectId">Project (Optional)</Label>
+                      <ProjectSelector
+                        value={formData.projectId}
+                        onChange={(value) => setFormData({ ...formData, projectId: value })}
+                        placeholder="Select a project"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Assign this note to a project
+                      </p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="tags">Tags (comma-separated)</Label>
+                      <Input
+                        id="tags"
+                        value={formData.tags}
+                        onChange={(e) => setFormData({ ...formData, tags: e.target.value })}
+                        placeholder="work, personal, ideas"
+                      />
+                    </div>
+                    <Button type="submit" className="w-full">
+                      {editingNote ? 'Update Note' : 'Create Note'}
+                    </Button>
+                  </form>
+                </DialogContent>
+              </Dialog>
+            </div>
 
-        {pinnedNotes.length > 0 && (
-          <div className="space-y-4">
-            <h2 className="text-xl font-semibold flex items-center gap-2">
-              <Pin className="h-5 w-5" />
-              Pinned Notes
-            </h2>
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {pinnedNotes.map((note) => (
-                <NoteCard key={note.id} note={note} />
-              ))}
+            {pinnedNotes.length > 0 && (
+              <div className="space-y-4">
+                <h2 className="text-xl font-semibold flex items-center gap-2">
+                  <Pin className="h-5 w-5" />
+                  Pinned Notes
+                </h2>
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                  {pinnedNotes.map((note) => (
+                    <NoteCard key={note.id} note={note} />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-4">
+              {pinnedNotes.length > 0 && <h2 className="text-xl font-semibold">All Notes</h2>}
+              {unpinnedNotes.length === 0 && pinnedNotes.length === 0 ? (
+                <Card>
+                  <CardContent className="p-8 text-center">
+                    <p className="text-muted-foreground">No notes yet. Create your first note!</p>
+                  </CardContent>
+                </Card>
+              ) : (
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                  {unpinnedNotes.map((note) => (
+                    <NoteCard key={note.id} note={note} />
+                  ))}
+                </div>
+              )}
             </div>
           </div>
-        )}
-
-        <div className="space-y-4">
-          {pinnedNotes.length > 0 && <h2 className="text-xl font-semibold">All Notes</h2>}
-          {unpinnedNotes.length === 0 && pinnedNotes.length === 0 ? (
-            <Card>
-              <CardContent className="p-8 text-center">
-                <p className="text-muted-foreground">No notes yet. Create your first note!</p>
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {unpinnedNotes.map((note) => (
-                <NoteCard key={note.id} note={note} />
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
         </MainLayout>
       </DataLoader>
     </ProtectedRoute>

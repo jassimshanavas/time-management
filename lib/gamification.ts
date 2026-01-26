@@ -1,17 +1,17 @@
 // Gamification Utilities and Configuration
 
+import { XPSource } from '@/types/gamification';
 import type {
     Achievement,
     AchievementCategory,
     BadgeTier,
-    XPSource,
     XPReward,
     LevelInfo,
     UserStats
 } from '@/types/gamification';
 
-// Re-export XPSource for convenience
-export { XPSource } from '@/types/gamification';
+export { XPSource };
+
 
 // XP Rewards Configuration
 export const XP_REWARDS: Record<XPSource, number> = {

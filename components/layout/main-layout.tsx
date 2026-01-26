@@ -7,6 +7,9 @@ import { Button } from '@/components/ui/button';
 import { Menu } from 'lucide-react';
 import { DndProviderWrapper } from '@/components/providers/dnd-provider';
 import { ThemeProvider } from '@/components/providers/theme-provider';
+import { CommandPalette } from '@/components/command-palette';
+import { WorkspaceSwitcher } from './workspace-switcher';
+
 
 interface MainLayoutProps {
   children: React.ReactNode;
@@ -30,12 +33,7 @@ export function MainLayout({ children }: MainLayoutProps) {
   }, [isCollapsed]);
 
   return (
-    <ThemeProvider
-      attribute="class"
-      defaultTheme="system"
-      enableSystem
-      disableTransitionOnChange
-    >
+    <ThemeProvider>
       <DndProviderWrapper>
         <div className="flex h-screen overflow-hidden">
           {/* Mobile sidebar backdrop */}
@@ -48,14 +46,13 @@ export function MainLayout({ children }: MainLayoutProps) {
 
           {/* Sidebar */}
           <aside
-            className={`fixed md:relative inset-y-0 left-0 z-50 transform transition-all duration-300 ease-in-out md:translate-x-0 ${
-              sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-            } ${isCollapsed ? 'md:w-[80px]' : 'md:w-72'}`}
+            className={`fixed md:relative inset-y-0 left-0 z-50 transform transition-all duration-300 ease-in-out md:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+              } ${isCollapsed ? 'md:w-[80px]' : 'md:w-72'}`}
           >
-            <Sidebar 
-              isCollapsed={isCollapsed} 
-              setIsCollapsed={setIsCollapsed}
-              onCloseMobileMenu={() => setSidebarOpen(false)}
+            <Sidebar
+              isCollapsed={isCollapsed}
+              onToggleCollapse={() => setIsCollapsed(!isCollapsed)}
+              onMobileClose={() => setSidebarOpen(false)}
             />
           </aside>
 
@@ -71,8 +68,10 @@ export function MainLayout({ children }: MainLayoutProps) {
               >
                 <Menu className="h-5 w-5" />
               </Button>
-              <div className="ml-4">
-                <h1 className="text-xl font-semibold">Habit Tracker</h1>
+              <div className="ml-4 flex items-center gap-4">
+                <h1 className="text-xl font-bold bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">TimeFlow</h1>
+                <div className="h-6 w-px bg-border hidden md:block" />
+                <WorkspaceSwitcher />
               </div>
             </header>
 
@@ -81,6 +80,7 @@ export function MainLayout({ children }: MainLayoutProps) {
             </main>
           </div>
         </div>
+        <CommandPalette />
       </DndProviderWrapper>
     </ThemeProvider>
   );

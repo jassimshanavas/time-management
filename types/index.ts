@@ -22,6 +22,17 @@ export interface TaskJournalEntry {
   createdAt: Date;
 }
 
+export interface Project {
+  id: string;
+  name: string;
+  description?: string;
+  color: string;
+  status: 'active' | 'archived' | 'completed';
+  createdAt: Date;
+  updatedAt: Date;
+  userId: string;
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -33,6 +44,7 @@ export interface Task {
   scheduledEnd?: Date;   // Optional: When task is scheduled to end
   estimatedDuration?: number; // Optional: Estimated duration in minutes
   goalId?: string; // Optional: Link task to a goal
+  projectId?: string; // Optional: Link task to a project
   milestoneId?: string; // Optional: Link task to a specific milestone within the goal
   createdAt: Date;
   updatedAt: Date;
@@ -44,12 +56,14 @@ export interface Task {
   userId: string; // Required for Firestore security rules
 }
 
+
 export interface Reminder {
   id: string;
   title: string;
   description?: string;
   dueDate: Date;
   completed: boolean;
+  projectId?: string; // Optional: Link reminder to a project
   createdAt: Date;
   notified?: boolean;
 }
@@ -59,6 +73,7 @@ export interface Note {
   title: string;
   content: string;
   tags: string[];
+  projectId?: string; // Optional: Link note to a project
   createdAt: Date;
   updatedAt: Date;
   pinned?: boolean;
@@ -74,6 +89,7 @@ export interface Goal {
   progress: number; // 0-100
   milestones: Milestone[];
   kanbanTasks?: KanbanTypes.Task[]; // Add Kanban tasks to the Goal interface
+  projectId?: string; // Optional: Link goal to a project
   createdAt: Date;
   updatedAt: Date;
 }
@@ -93,6 +109,7 @@ export interface Habit {
   streak: number;
   longestStreak: number;
   completedDates: Date[];
+  projectId?: string; // Optional: Link habit to a project
   createdAt: Date;
 }
 
@@ -101,6 +118,7 @@ export interface TimeEntry {
   category: string;
   description?: string;
   taskId?: string;
+  projectId?: string; // Optional: Link time entry to a project
   startTime: Date;
   endTime?: Date;
   duration?: number; // in minutes
