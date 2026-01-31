@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Dialog,
   DialogContent,
@@ -17,7 +18,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { useStore } from '@/lib/store';
-import { Play, Square, Plus, Trash2, Clock, Calendar } from 'lucide-react';
+import { Play, Square, Plus, Trash2, Clock, Calendar, Edit2 } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import type { TimeEntry } from '@/types';
 import Link from 'next/link';
@@ -47,6 +48,9 @@ export default function TimeTrackingPage() {
     taskId: '',
     projectId: '' as string | undefined,
   });
+  const [isSummaryDialogOpen, setIsSummaryDialogOpen] = useState(false);
+  const [sessionSummary, setSessionSummary] = useState('');
+  const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -71,7 +75,26 @@ export default function TimeTrackingPage() {
   };
 
   const handleStopTimer = (id: string) => {
-    stopTimeEntry(id);
+    setIsSummaryDialogOpen(true);
+  };
+
+  const handleConfirmStop = () => {
+    if (editingEntryId) {
+      updateTimeEntry(editingEntryId, { notes: sessionSummary });
+      setEditingEntryId(null);
+      setSessionSummary('');
+      setIsSummaryDialogOpen(false);
+    } else if (runningEntry) {
+      stopTimeEntry(runningEntry.id, sessionSummary);
+      setSessionSummary('');
+      setIsSummaryDialogOpen(false);
+    }
+  };
+
+  const handleEditNotes = (entry: TimeEntry) => {
+    setEditingEntryId(entry.id);
+    setSessionSummary(entry.notes || '');
+    setIsSummaryDialogOpen(true);
   };
 
   const runningEntry = timeEntries.find((e) => e.isRunning);
@@ -224,6 +247,8 @@ export default function TimeTrackingPage() {
                       <Square className="h-6 w-6 mr-3 fill-current" />
                       Terminate Session
                     </Button>
+
+
                   </div>
                 ) : (
                   <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
@@ -431,6 +456,14 @@ export default function TimeTrackingPage() {
                               {format(new Date(entry.startTime), 'MMM d, h:mm a')}
                               {entry.endTime && ` — ${format(new Date(entry.endTime), 'h:mm a')}`}
                             </div>
+
+                            {entry.notes && (
+                              <div className="mt-4 p-4 rounded-xl bg-primary/5 border border-primary/10">
+                                <p className="text-[11px] leading-relaxed text-foreground/80 font-medium italic whitespace-pre-wrap">
+                                  {entry.notes}
+                                </p>
+                              </div>
+                            )}
                           </div>
 
                           <div className="flex items-center gap-3 w-full sm:w-auto">
@@ -440,6 +473,17 @@ export default function TimeTrackingPage() {
                               </div>
                             )}
                             <div className="flex gap-1 ml-auto shrink-0 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-all duration-300">
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleEditNotes(entry);
+                                }}
+                                className="h-9 w-9 rounded-xl hover:bg-primary/10 hover:text-primary transition-all"
+                              >
+                                <Edit2 className="h-4 w-4" />
+                              </Button>
                               <Button
                                 size="icon"
                                 variant="ghost"
@@ -461,6 +505,76 @@ export default function TimeTrackingPage() {
               </Card>
             </div>
           </div>
+          <Dialog
+            open={isSummaryDialogOpen}
+            onOpenChange={(open) => {
+              setIsSummaryDialogOpen(open);
+              if (!open) {
+                setEditingEntryId(null);
+                setSessionSummary('');
+              }
+            }}
+          >
+            <DialogContent className="max-w-xl p-0 overflow-hidden rounded-[2rem] border-primary/10 bg-background/95 backdrop-blur-2xl shadow-2xl">
+              <div className="p-8 sm:p-10">
+                <DialogHeader className="mb-8">
+                  <DialogTitle className="text-2xl font-black tracking-tight italic">
+                    {editingEntryId ? 'Edit Session Notes' : 'Session Summary'}
+                  </DialogTitle>
+                  <DialogDescription className="text-xs font-black uppercase tracking-widest opacity-40">
+                    {editingEntryId ? 'Update your reflections for this session' : 'Capture the outcomes of this temporal cycle'}
+                  </DialogDescription>
+                </DialogHeader>
+
+                <div className="space-y-6">
+                  <div className="space-y-3">
+                    <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/60">Accomplishments & Notes</Label>
+                    <Textarea
+                      value={sessionSummary}
+                      onChange={(e) => setSessionSummary(e.target.value)}
+                      placeholder="What did you achieve? Any pending items or next steps?"
+                      className="bg-muted/30 min-h-[150px] rounded-2xl border-primary/5 focus:ring-primary/20 transition-all text-base font-medium p-4 resize-none"
+                    />
+                  </div>
+
+                  <div className="flex gap-4">
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setIsSummaryDialogOpen(false);
+                        setEditingEntryId(null);
+                        setSessionSummary('');
+                      }}
+                      className="flex-1 h-14 rounded-xl font-black text-[10px] uppercase tracking-widest border-primary/10 hover:bg-muted/50"
+                    >
+                      {editingEntryId ? 'Cancel' : 'Discard & Keep Running'}
+                    </Button>
+                    <Button
+                      onClick={handleConfirmStop}
+                      className="flex-1 h-14 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-primary/20"
+                    >
+                      {editingEntryId ? 'Update Notes' : 'Terminate & Save'}
+                    </Button>
+                  </div>
+
+                  {!editingEntryId && (
+                    <Button
+                      variant="ghost"
+                      onClick={() => {
+                        if (runningEntry) {
+                          stopTimeEntry(runningEntry.id);
+                          setIsSummaryDialogOpen(false);
+                        }
+                      }}
+                      className="w-full text-[9px] font-black uppercase tracking-[0.2em] opacity-30 hover:opacity-100 transition-opacity"
+                    >
+                      Terminate without summary
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
         </MainLayout>
       </DataLoader>
     </ProtectedRoute>

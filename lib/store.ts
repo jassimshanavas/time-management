@@ -73,7 +73,7 @@ interface AppStore {
   addTimeEntry: (entry: Omit<TimeEntry, 'id'>) => Promise<void>;
   updateTimeEntry: (id: string, entry: Partial<TimeEntry>) => Promise<void>;
   deleteTimeEntry: (id: string) => Promise<void>;
-  stopTimeEntry: (id: string) => Promise<void>;
+  stopTimeEntry: (id: string, notes?: string) => Promise<void>;
 
   // Projects
   projects: Project[];
@@ -553,7 +553,7 @@ export const useStore = create<AppStore>()((set, get) => ({
       console.error('Error deleting time entry:', error);
     }
   },
-  stopTimeEntry: async (id) => {
+  stopTimeEntry: async (id, notes) => {
     const entry = get().timeEntries.find((e) => e.id === id);
     if (!entry || !entry.isRunning) return;
 
@@ -563,10 +563,10 @@ export const useStore = create<AppStore>()((set, get) => ({
     );
 
     try {
-      await firebaseService.updateTimeEntry(id, { endTime, duration, isRunning: false });
+      await firebaseService.updateTimeEntry(id, { endTime, duration, isRunning: false, notes });
       set((state) => ({
         timeEntries: state.timeEntries.map((e) =>
-          e.id === id ? { ...e, endTime, duration, isRunning: false } : e
+          e.id === id ? { ...e, endTime, duration, isRunning: false, notes } : e
         ),
       }));
     } catch (error) {

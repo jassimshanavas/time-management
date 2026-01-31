@@ -125,6 +125,7 @@ export interface TimeEntry {
   endTime?: Date;
   duration?: number; // in minutes
   isRunning: boolean;
+  notes?: string;
 }
 
 export interface TimelineEvent {
