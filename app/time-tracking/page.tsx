@@ -272,12 +272,15 @@ export default function TimeTrackingPage() {
                                 <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/60">Task Synapse</Label>
                                 <Select
                                   value={formData.taskId || 'none'}
-                                  onValueChange={(value) =>
+                                  onValueChange={(value) => {
+                                    const taskId = value === 'none' ? '' : value;
+                                    const selectedTask = tasks.find((t) => t.id === taskId);
                                     setFormData((prev) => ({
                                       ...prev,
-                                      taskId: value === 'none' ? '' : value,
-                                    }))
-                                  }
+                                      taskId,
+                                      projectId: selectedTask ? (selectedTask.projectId || '') : prev.projectId,
+                                    }));
+                                  }}
                                 >
                                   <SelectTrigger className="bg-muted/30 h-11 rounded-xl border-primary/5 text-xs font-bold">
                                     <SelectValue placeholder="Select a task" />
