@@ -386,23 +386,27 @@ export function Sidebar({ isCollapsed = false, onToggleCollapse, onMobileClose }
               {/* PROJECTS Section */}
               {!isCollapsed ? (
                 <Collapsible open={projectsExpanded} onOpenChange={setProjectsExpanded}>
-                  <CollapsibleTrigger className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider hover:text-foreground transition-colors">
-                    <ChevronDown
-                      className={cn('h-4 w-4 transition-transform', !projectsExpanded && '-rotate-90')}
-                    />
-                    <FolderKanban className="h-4 w-4" />
-                    <span className="flex-1 text-left">Projects</span>
+                  <div className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider hover:text-foreground transition-colors group">
+                    <CollapsibleTrigger asChild>
+                      <button className="flex flex-1 items-center gap-2 min-w-0">
+                        <ChevronDown
+                          className={cn('h-4 w-4 transition-transform shrink-0', !projectsExpanded && '-rotate-90')}
+                        />
+                        <FolderKanban className="h-4 w-4 shrink-0" />
+                        <span className="flex-1 text-left truncate">Projects</span>
+                      </button>
+                    </CollapsibleTrigger>
                     <CreateProjectDialog>
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-5 w-5 p-0 hover:bg-primary/10"
+                        className="h-5 w-5 p-0 hover:bg-primary/10 shrink-0"
                         onClick={(e) => e.stopPropagation()}
                       >
                         <Plus className="h-3 w-3" />
                       </Button>
                     </CreateProjectDialog>
-                  </CollapsibleTrigger>
+                  </div>
                   <CollapsibleContent className="space-y-1 mt-1">
                     {projects.length === 0 ? (
                       <p className="text-xs text-muted-foreground px-6 py-2 italic">No projects yet</p>
@@ -455,12 +459,14 @@ export function Sidebar({ isCollapsed = false, onToggleCollapse, onMobileClose }
               {/* PERSONAL Section */}
               {!isCollapsed ? (
                 <Collapsible open={personalExpanded} onOpenChange={setPersonalExpanded}>
-                  <CollapsibleTrigger className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider hover:text-foreground transition-colors">
-                    <ChevronDown
-                      className={cn('h-4 w-4 transition-transform', !personalExpanded && '-rotate-90')}
-                    />
-                    <User className="h-4 w-4" />
-                    <span className="flex-1 text-left">Personal</span>
+                  <CollapsibleTrigger asChild>
+                    <button className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider hover:text-foreground transition-colors group">
+                      <ChevronDown
+                        className={cn('h-4 w-4 transition-transform shrink-0', !personalExpanded && '-rotate-90')}
+                      />
+                      <User className="h-4 w-4 shrink-0" />
+                      <span className="flex-1 text-left truncate">Personal</span>
+                    </button>
                   </CollapsibleTrigger>
                   <CollapsibleContent className="space-y-1 mt-1">
                     {personalRoutes.map((route) => (
