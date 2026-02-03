@@ -68,7 +68,8 @@ import {
   Coffee,
   Camera,
   Download,
-  Share2
+  Share2,
+  Settings
 } from 'lucide-react';
 import * as htmlToImage from 'html-to-image';
 import { toast } from 'sonner';
@@ -120,6 +121,7 @@ function TaskDetailPageContent() {
   const [newJournalEntry, setNewJournalEntry] = useState('');
   const [isAddingJournal, setIsAddingJournal] = useState(false);
   const [isSummaryDialogOpen, setIsSummaryDialogOpen] = useState(false);
+  const [isDependencyModalOpen, setIsDependencyModalOpen] = useState(false);
   const [sessionSummary, setSessionSummary] = useState('');
   const [sessionCategory, setSessionCategory] = useState('');
   const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
@@ -527,6 +529,19 @@ function TaskDetailPageContent() {
       : [...currentDependencies, dependencyId];
 
     await updateTask(task.id, { dependencyIds: updatedDependencies });
+  };
+
+  const handleToggleDependent = async (otherTaskId: string) => {
+    if (!task) return;
+    const otherTask = tasks.find(t => t.id === otherTaskId);
+    if (!otherTask) return;
+
+    const currentDeps = otherTask.dependencyIds || [];
+    const updatedDeps = currentDeps.includes(task.id)
+      ? currentDeps.filter(id => id !== task.id)
+      : [...currentDeps, task.id];
+
+    await updateTask(otherTaskId, { dependencyIds: updatedDeps });
   };
 
   const handleAddJournalEntry = async () => {
@@ -1526,9 +1541,20 @@ function TaskDetailPageContent() {
                       <Link2 className="h-4 w-4 text-primary" />
                       <p className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/60">Strategic Context Map</p>
                     </div>
-                    <Badge variant="outline" className={`text-[8px] font-black uppercase tracking-widest ${isTaskBlocked ? 'text-destructive border-destructive/20' : 'text-green-500 border-green-500/20'}`}>
-                      {isTaskBlocked ? 'Path Blocked' : 'Path Clear'}
-                    </Badge>
+                    <div className="flex items-center gap-3">
+                      <Badge variant="outline" className={`text-[8px] font-black uppercase tracking-widest ${isTaskBlocked ? 'text-destructive border-destructive/20' : 'text-green-500 border-green-500/20'}`}>
+                        {isTaskBlocked ? 'Path Blocked' : 'Path Clear'}
+                      </Badge>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 rounded-lg hover:bg-primary/10 transition-colors"
+                        onClick={() => setIsDependencyModalOpen(true)}
+                        title="Edit Dependencies"
+                      >
+                        <Settings className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
                   </div>
                   <CardContent className="p-8 relative min-h-[300px] flex items-center justify-between gap-4">
                     {/* Tactical Grid Background */}
@@ -2492,6 +2518,102 @@ function TaskDetailPageContent() {
               </div>
             </DialogContent>
           </Dialog>
+          {/* Dependency Management Modal */}
+          <Dialog open={isDependencyModalOpen} onOpenChange={setIsDependencyModalOpen}>
+            <DialogContent className="max-w-2xl p-0 overflow-hidden rounded-[2.5rem] border-primary/10 bg-background/95 backdrop-blur-2xl shadow-2xl">
+              <div className="p-8 sm:p-10">
+                <DialogHeader className="mb-6">
+                  <DialogTitle className="text-3xl font-black tracking-tight italic flex items-center gap-3">
+                    <Link2 className="h-6 w-6 text-primary" />
+                    Strategic Critical Path
+                  </DialogTitle>
+                  <DialogDescription className="text-xs font-black uppercase tracking-widest opacity-40">
+                    Configure situational relationships for "{task?.title}"
+                  </DialogDescription>
+                </DialogHeader>
+
+                <Tabs defaultValue="pre-requisites" className="w-full">
+                  <TabsList className="w-full grid grid-cols-2 bg-muted/20 p-1 h-12 rounded-xl mb-6">
+                    <TabsTrigger value="pre-requisites" className="rounded-lg font-black uppercase tracking-widest text-[9px] data-[state=active]:bg-background">
+                      Pre-requisites
+                    </TabsTrigger>
+                    <TabsTrigger value="unlocks" className="rounded-lg font-black uppercase tracking-widest text-[9px] data-[state=active]:bg-background">
+                      Unlocks (Dependents)
+                    </TabsTrigger>
+                  </TabsList>
+
+                  <TabsContent value="pre-requisites" className="space-y-4">
+                    <div className="max-h-[350px] overflow-y-auto custom-scrollbar pr-2 -mr-2 space-y-2">
+                      {otherTasks.length > 0 ? otherTasks.map(other => (
+                        <div
+                          key={other.id}
+                          className={`flex items-center justify-between p-4 rounded-xl border transition-all cursor-pointer group ${task?.dependencyIds?.includes(other.id) ? 'bg-primary/5 border-primary/20 shadow-sm' : 'bg-muted/10 border-transparent hover:border-primary/10 hover:bg-muted/20'}`}
+                          onClick={() => handleToggleDependency(other.id)}
+                        >
+                          <div className="flex items-center gap-4">
+                            <Checkbox
+                              checked={task?.dependencyIds?.includes(other.id) || false}
+                              className={`rounded-full h-5 w-5 border-2 ${task?.dependencyIds?.includes(other.id) ? 'bg-primary border-primary' : 'border-primary/10'}`}
+                            />
+                            <div className="min-w-0">
+                              <p className="font-bold text-sm truncate">{other.title}</p>
+                              <p className="text-[10px] font-black uppercase tracking-tighter opacity-40">{other.status}</p>
+                            </div>
+                          </div>
+                          <Badge variant="outline" className={`text-[8px] font-black hidden group-hover:flex ${other.status === 'done' ? 'text-green-500 border-green-500/10' : 'text-muted-foreground border-muted-foreground/10'}`}>
+                            {other.status.toUpperCase()}
+                          </Badge>
+                        </div>
+                      )) : (
+                        <div className="py-20 text-center opacity-30 italic">No other tasks available in mission control</div>
+                      )}
+                    </div>
+                  </TabsContent>
+
+                  <TabsContent value="unlocks" className="space-y-4">
+                    <div className="max-h-[350px] overflow-y-auto custom-scrollbar pr-2 -mr-2 space-y-2">
+                      {otherTasks.length > 0 ? otherTasks.map(other => {
+                        const isDependent = other.dependencyIds?.includes(task?.id || '');
+                        return (
+                          <div
+                            key={other.id}
+                            className={`flex items-center justify-between p-4 rounded-xl border transition-all cursor-pointer group ${isDependent ? 'bg-primary/5 border-primary/20 shadow-sm' : 'bg-muted/10 border-transparent hover:border-primary/10 hover:bg-muted/20'}`}
+                            onClick={() => handleToggleDependent(other.id)}
+                          >
+                            <div className="flex items-center gap-4">
+                              <Checkbox
+                                checked={isDependent || false}
+                                className={`rounded-full h-5 w-5 border-2 ${isDependent ? 'bg-primary border-primary' : 'border-primary/10'}`}
+                              />
+                              <div className="min-w-0">
+                                <p className="font-bold text-sm truncate">{other.title}</p>
+                                <p className="text-[10px] font-black uppercase tracking-tighter opacity-40">{other.status}</p>
+                              </div>
+                            </div>
+                            <Badge variant="outline" className={`text-[8px] font-black hidden group-hover:flex ${other.status === 'done' ? 'text-green-500 border-green-500/10' : 'text-muted-foreground border-muted-foreground/10'}`}>
+                              {other.status.toUpperCase()}
+                            </Badge>
+                          </div>
+                        );
+                      }) : (
+                        <div className="py-20 text-center opacity-30 italic">No other tasks available in mission control</div>
+                      )}
+                    </div>
+                  </TabsContent>
+                </Tabs>
+
+                <div className="pt-6 border-t border-primary/5">
+                  <Button
+                    onClick={() => setIsDependencyModalOpen(false)}
+                    className="w-full h-14 rounded-2xl font-black uppercase tracking-widest text-[11px] shadow-lg shadow-primary/20"
+                  >
+                    Save Operational Mapping
+                  </Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
+
         </MainLayout>
       </DataLoader>
     </ProtectedRoute>
