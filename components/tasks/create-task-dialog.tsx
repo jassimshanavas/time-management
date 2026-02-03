@@ -19,10 +19,11 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Calendar as CalendarIcon, Clock, Plus } from 'lucide-react';
+import { Calendar as CalendarIcon, Clock, Plus, Users } from 'lucide-react';
 import { format } from 'date-fns';
 import type { Task, TaskStatus, TaskPriority } from '@/types';
 
@@ -34,7 +35,7 @@ interface CreateTaskDialogProps {
 
 export function CreateTaskDialog({ children, projectId, defaultStatus = 'todo' }: CreateTaskDialogProps) {
     const [open, setOpen] = useState(false);
-    const { addTask, goals, projects } = useStore();
+    const { addTask, goals, projects, userCache } = useStore();
 
     const [formData, setFormData] = useState({
         title: '',
@@ -48,6 +49,7 @@ export function CreateTaskDialog({ children, projectId, defaultStatus = 'todo' }
         projectId: projectId || '',
         milestoneId: '',
         tags: [] as string[],
+        assignedTo: [] as string[],
     });
 
     useEffect(() => {
@@ -74,9 +76,10 @@ export function CreateTaskDialog({ children, projectId, defaultStatus = 'todo' }
             scheduledEnd,
             estimatedDuration: formData.estimatedDuration || undefined,
             goalId: formData.goalId || undefined,
-            projectId: projectId || undefined,
+            projectId: formData.projectId || undefined,
             milestoneId: formData.milestoneId || undefined,
             tags: formData.tags,
+            assignedTo: formData.assignedTo,
             createdAt: new Date(),
             updatedAt: new Date(),
         };
@@ -95,6 +98,7 @@ export function CreateTaskDialog({ children, projectId, defaultStatus = 'todo' }
             projectId: projectId || '',
             milestoneId: '',
             tags: [],
+            assignedTo: [],
         });
         setOpen(false);
     };
@@ -240,6 +244,38 @@ export function CreateTaskDialog({ children, projectId, defaultStatus = 'todo' }
                             </Select>
                         </div>
                     </div>
+
+                    {formData.projectId && (
+                        <div className="space-y-2 pb-2">
+                            <div className="flex items-center gap-2">
+                                <Users className="h-4 w-4 text-muted-foreground" />
+                                <Label className="text-sm font-medium">Assign To</Label>
+                            </div>
+                            <div className="flex flex-wrap gap-2 pt-1">
+                                {projects.find(p => p.id === formData.projectId)?.members?.map(member => (
+                                    <Badge
+                                        key={member.userId}
+                                        variant={formData.assignedTo.includes(member.userId) ? "default" : "outline"}
+                                        className={`cursor-pointer h-7 px-2 font-bold uppercase text-[9px] tracking-tight transition-all ${formData.assignedTo.includes(member.userId) ? 'bg-primary border-primary' : 'bg-transparent border-primary/20 opacity-60 hover:opacity-100'}`}
+                                        onClick={() => {
+                                            const isAssigned = formData.assignedTo.includes(member.userId);
+                                            setFormData({
+                                                ...formData,
+                                                assignedTo: isAssigned
+                                                    ? formData.assignedTo.filter(id => id !== member.userId)
+                                                    : [...formData.assignedTo, member.userId]
+                                            });
+                                        }}
+                                    >
+                                        {userCache[member.userId]?.name || `${member.userId.slice(0, 8)}...`}
+                                    </Badge>
+                                ))}
+                                {(!projects.find(p => p.id === formData.projectId)?.members?.length) && (
+                                    <p className="text-[10px] text-muted-foreground italic">No other members in this project</p>
+                                )}
+                            </div>
+                        </div>
+                    )}
 
                     <div className="border-t pt-4 space-y-4">
                         <div className="flex items-center gap-2">

@@ -35,6 +35,7 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { ProjectKanban } from '@/components/projects/project-kanban';
 import { CreateTaskDialog } from '@/components/tasks/create-task-dialog';
+import { CollaboratorManagementDialog } from '@/components/projects/collaborator-management-dialog';
 import { format } from 'date-fns';
 import Link from 'next/link';
 import { MainLayout } from '@/components/layout/main-layout';
@@ -44,7 +45,7 @@ import { DataLoader } from '@/components/data-loader';
 export default function ProjectPage() {
     const router = useRouter();
     const { projectId } = useParams() as { projectId: string };
-    const { projects, tasks, notes, goals, habits, timeEntries, deleteProject } = useStore();
+    const { projects, tasks, notes, goals, habits, timeEntries, deleteProject, userCache } = useStore();
     const project = projects.find(p => p.id === projectId);
 
     if (!project) {
@@ -161,17 +162,29 @@ export default function ProjectPage() {
 
                                     <div className="flex items-center gap-4 self-center md:self-auto shrink-0">
                                         <div className="flex -space-x-3">
-                                            {[1, 2, 3].map((i) => (
-                                                <Avatar key={i} className="h-8 w-8 ring-2 ring-background shadow-md border-none">
-                                                    <AvatarImage src={`https://api.dicebear.com/7.x/avataaars/svg?seed=User${i + project.id.length}`} />
-                                                    <AvatarFallback>U{i}</AvatarFallback>
+                                            {project.members?.map((member) => {
+                                                const u = userCache[member.userId];
+                                                return (
+                                                    <Avatar key={member.userId} className="h-8 w-8 ring-2 ring-background shadow-md border-none">
+                                                        <AvatarImage src={u?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${member.userId}`} title={u?.name || member.userId} />
+                                                        <AvatarFallback className="text-[10px] bg-primary/10 text-primary font-black">
+                                                            {(u?.name || member.userId).slice(0, 2).toUpperCase()}
+                                                        </AvatarFallback>
+                                                    </Avatar>
+                                                );
+                                            })}
+                                            {(project.members?.length || 0) === 0 && (
+                                                <Avatar className="h-8 w-8 ring-2 ring-background shadow-md border-none bg-primary/10">
+                                                    <AvatarFallback className="text-primary text-[10px] font-black">{project.userId.slice(0, 2).toUpperCase()}</AvatarFallback>
                                                 </Avatar>
-                                            ))}
+                                            )}
                                         </div>
                                         <div className="h-6 w-px bg-primary/10" />
-                                        <Button variant="outline" size="icon" className="rounded-xl h-8 w-8 border-dashed hover:border-primary hover:text-primary transition-colors bg-background/40">
-                                            <Plus className="h-4 w-4" />
-                                        </Button>
+                                        <CollaboratorManagementDialog project={project}>
+                                            <Button variant="outline" size="icon" className="rounded-xl h-8 w-8 border-dashed hover:border-primary hover:text-primary transition-colors bg-background/40">
+                                                <Plus className="h-4 w-4" />
+                                            </Button>
+                                        </CollaboratorManagementDialog>
                                     </div>
                                 </div>
 

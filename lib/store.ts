@@ -16,7 +16,9 @@ import {
 interface AppStore {
   // User & Auth
   userId: string | null;
+  userCache: Record<string, User>;
   setUserId: (id: string | null) => void;
+  loadProjectMembers: (userIds: string[]) => Promise<void>;
 
   // Settings
   settings: AppSettings;
@@ -86,6 +88,10 @@ interface AppStore {
   selectedProjectId: string | null;
   setSelectedProjectId: (id: string | null) => void;
 
+  // Collaboration
+  searchUsers: (query: string) => Promise<User[]>;
+  inviteToProject: (projectId: string, user: User) => Promise<void>;
+
   // Utility
   loadAllData: () => Promise<void>;
   clearAllData: () => Promise<void>;
@@ -94,7 +100,29 @@ interface AppStore {
 export const useStore = create<AppStore>()((set, get) => ({
   // User & Auth
   userId: null,
+  userCache: {},
   setUserId: (id) => set({ userId: id }),
+
+  loadProjectMembers: async (userIds) => {
+    if (!userIds || userIds.length === 0) return;
+
+    // Filter out user IDs we already have in cache to avoid redundant fetches
+    const existingIds = Object.keys(get().userCache);
+    const newIds = userIds.filter(id => !existingIds.includes(id));
+
+    if (newIds.length === 0) return;
+
+    try {
+      const users = await firebaseService.getUsersByIds(newIds);
+      const newCache = { ...get().userCache };
+      users.forEach(u => {
+        newCache[u.id] = u;
+      });
+      set({ userCache: newCache });
+    } catch (error) {
+      console.error('Error loading project members:', error);
+    }
+  },
 
   // Gamification
   gamification: null,
@@ -220,10 +248,15 @@ export const useStore = create<AppStore>()((set, get) => ({
   // Tasks
   tasks: [],
   loadTasks: async () => {
-    const userId = get().userId;
+    const { userId, projects } = get();
     if (!userId) return;
     try {
-      const tasks = await firebaseService.getTasks(userId);
+      // Find IDs of projects where user is a collaborator
+      const collabProjectIds = projects
+        .filter(p => p.visibility === 'collaborative' && p.memberIds?.includes(userId))
+        .map(p => p.id);
+
+      const tasks = await firebaseService.getTasks(userId, collabProjectIds);
       set({ tasks });
     } catch (error) {
       console.error('Error loading tasks:', error);
@@ -621,8 +654,37 @@ export const useStore = create<AppStore>()((set, get) => ({
   selectedProjectId: null,
   setSelectedProjectId: (id) => set({ selectedProjectId: id }),
 
+  // Collaboration
+  searchUsers: async (queryText: string) => {
+    try {
+      return await firebaseService.searchUsers(queryText);
+    } catch (error) {
+      console.error('Error searching users:', error);
+      return [];
+    }
+  },
+  inviteToProject: async (projectId: string, userToInvite: User) => {
+    try {
+      await firebaseService.inviteToProject(projectId, userToInvite);
+      // Refresh projects to get updated member list
+      await get().loadProjects();
+    } catch (error) {
+      console.error('Error inviting to project:', error);
+      throw error;
+    }
+  },
+
   // Utility
   loadAllData: async () => {
+    // Load projects first so we know which collaborative tasks to fetch
+    await get().loadProjects();
+
+    const projects = get().projects;
+    const allMemberIds = Array.from(new Set(projects.flatMap(p => p.memberIds || [])));
+    if (allMemberIds.length > 0) {
+      await get().loadProjectMembers(allMemberIds);
+    }
+
     await Promise.all([
       get().loadTasks(),
       get().loadReminders(),
@@ -630,8 +692,8 @@ export const useStore = create<AppStore>()((set, get) => ({
       get().loadGoals(),
       get().loadHabits(),
       get().loadTimeEntries(),
-      get().loadProjects(),
       get().loadSettings(),
+      get().loadGamification(),
     ]);
   },
   clearAllData: async () => {

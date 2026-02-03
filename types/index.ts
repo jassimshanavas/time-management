@@ -22,6 +22,14 @@ export interface TaskJournalEntry {
   createdAt: Date;
 }
 
+export type ProjectRole = 'owner' | 'manager' | 'member' | 'viewer';
+
+export interface ProjectMember {
+  userId: string;
+  role: ProjectRole;
+  joinedAt: Date;
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -29,9 +37,12 @@ export interface Project {
   color: string;
   emoji?: string;
   status: 'active' | 'archived' | 'completed';
+  visibility: 'private' | 'collaborative';
   createdAt: Date;
   updatedAt: Date;
-  userId: string;
+  userId: string; // Owner ID
+  members?: ProjectMember[]; // List of people in this project
+  memberIds?: string[]; // Optimized list of IDs for Firestore indexing
 }
 
 export interface Task {
@@ -56,6 +67,7 @@ export interface Task {
   journal?: TaskJournalEntry[]; // Optional: Journal/notes entries
   coverImage?: string; // Optional: Cover image URL for the task
   userId: string; // Required for Firestore security rules
+  assignedTo?: string[]; // Optional: List of user IDs assigned to this task
 }
 
 

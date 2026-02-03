@@ -8,13 +8,15 @@ import {
   deleteDoc,
   query,
   where,
+  or,
   orderBy,
+  documentId,
   Timestamp,
   writeBatch,
   deleteField,
 } from 'firebase/firestore';
 import { db } from './firebase';
-import type { Task, Reminder, Note, Goal, Habit, TimeEntry, User, AppSettings, Project } from '@/types';
+import type { Task, Reminder, Note, Goal, Habit, TimeEntry, User, AppSettings, Project, ProjectMember } from '@/types';
 
 // Helper to convert Firestore timestamps to Date objects
 const convertTimestamps = (data: any) => {
@@ -98,8 +100,24 @@ const serializeUpdateForFirestore = (updates: Record<string, any>) => {
 };
 
 // ==================== TASKS ====================
-export const getTasks = async (userId: string): Promise<Task[]> => {
-  const q = query(collection(db, 'tasks'), where('userId', '==', userId));
+export const getTasks = async (userId: string, collaborativeProjectIds: string[] = []): Promise<Task[]> => {
+  let q;
+  if (collaborativeProjectIds.length > 0) {
+    // Fetch user's tasks OR tasks in projects they collaborate on
+    // Note: Firestore has a limit of 30 items for 'in' query. 
+    // If there are many projects, we might need to batch this.
+    // Also, complex 'or' queries with 'in' might have limitations.
+    q = query(
+      collection(db, 'tasks'),
+      or(
+        where('userId', '==', userId),
+        where('projectId', 'in', collaborativeProjectIds)
+      )
+    );
+  } else {
+    q = query(collection(db, 'tasks'), where('userId', '==', userId));
+  }
+
   const snapshot = await getDocs(q);
   return snapshot.docs.map((doc) => ({
     id: doc.id,
@@ -229,7 +247,10 @@ export const deleteGoal = async (goalId: string): Promise<void> => {
 
 // ==================== PROJECTS ====================
 export const getProjects = async (userId: string): Promise<Project[]> => {
-  const q = query(collection(db, 'projects'), where('userId', '==', userId));
+  const q = query(
+    collection(db, 'projects'),
+    or(where('userId', '==', userId), where('memberIds', 'array-contains', userId))
+  );
   const snapshot = await getDocs(q);
   return snapshot.docs.map((doc) => ({
     id: doc.id,
@@ -241,6 +262,14 @@ export const addProject = async (userId: string, project: Omit<Project, 'id' | '
   const serializedProject = serializeForFirestore({
     ...project,
     userId,
+    memberIds: [userId],
+    members: [
+      {
+        userId,
+        role: 'owner',
+        joinedAt: new Date(),
+      },
+    ],
   });
   const docRef = await addDoc(collection(db, 'projects'), serializedProject);
   return docRef.id;
@@ -341,6 +370,50 @@ export const getSettings = async (userId: string): Promise<AppSettings | null> =
 
 export const updateSettings = async (userId: string, settings: AppSettings): Promise<void> => {
   await updateDoc(doc(db, 'settings', userId), { ...settings });
+};
+
+// ==================== COLLABORATION ====================
+export const searchUsers = async (queryText: string): Promise<User[]> => {
+  // Simple search by email (exact match for security/privacy)
+  const q = query(collection(db, 'users'), where('email', '==', queryText.toLowerCase()));
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as User[];
+};
+
+export const getUsersByIds = async (userIds: string[]): Promise<User[]> => {
+  if (!userIds || userIds.length === 0) return [];
+
+  // Firestore limit for 'in' is 30. If we have more members, we'd need to batch.
+  // For now, 30 is plenty for a project.
+  const q = query(collection(db, 'users'), where(documentId(), 'in', userIds.slice(0, 30)));
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as User[];
+};
+
+export const inviteToProject = async (projectId: string, userToInvite: User): Promise<void> => {
+  const projectRef = doc(db, 'projects', projectId);
+  const projectSnap = await getDoc(projectRef);
+
+  if (!projectSnap.exists()) throw new Error('Project not found');
+
+  const projectData = projectSnap.data() as Project;
+  const memberIds = projectData.memberIds || [];
+  const members = projectData.members || [];
+
+  if (memberIds.includes(userToInvite.id)) return; // Already a member
+
+  const newMember: ProjectMember = {
+    userId: userToInvite.id,
+    role: 'member',
+    joinedAt: new Date(),
+  };
+
+  await updateDoc(projectRef, {
+    visibility: 'collaborative',
+    memberIds: [...memberIds, userToInvite.id],
+    members: [...members, newMember],
+    updatedAt: Timestamp.fromDate(new Date()),
+  });
 };
 
 // ==================== BULK OPERATIONS ====================
