@@ -11,6 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
   Tabs,
   TabsContent,
@@ -68,6 +69,7 @@ import {
   Coffee,
   Camera,
   Download,
+  Users,
   Share2,
   Settings
 } from 'lucide-react';
@@ -112,6 +114,7 @@ function TaskDetailPageContent() {
     stopTimeEntry,
     updateTimeEntry,
     deleteTimeEntry,
+    userCache,
   } = useStore();
   const [task, setTask] = useState<Task | null>(null);
   const [newComment, setNewComment] = useState('');
@@ -1276,6 +1279,37 @@ function TaskDetailPageContent() {
                     ))}
                   </CardContent>
                 </Card>
+
+                {/* Assigned Team Section */}
+                {task.assignedTo && task.assignedTo.length > 0 && (
+                  <Card className="border-none bg-muted/20 rounded-[2.5rem] p-6">
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className="p-2 rounded-xl bg-primary/10 text-primary">
+                        <Users className="h-4 w-4" />
+                      </div>
+                      <p className="text-[10px] font-black uppercase tracking-[0.2em] opacity-60">Assigned Team</p>
+                    </div>
+                    <div className="grid gap-3">
+                      {task.assignedTo.map(uid => {
+                        const u = userCache[uid];
+                        return (
+                          <div key={uid} className="flex items-center gap-3 p-2 rounded-2xl bg-background/50 border border-primary/5">
+                            <Avatar className="h-8 w-8 ring-2 ring-background border-none shadow-sm">
+                              <AvatarImage src={u?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${uid}`} />
+                              <AvatarFallback className="text-[10px] bg-primary/10 text-primary font-black">
+                                {(u?.name || uid).slice(0, 2).toUpperCase()}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-[11px] font-bold truncate">{u?.name || 'Loading Agent...'}</p>
+                              <p className="text-[9px] font-black uppercase tracking-widest opacity-40">Field Agent</p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </Card>
+                )}
 
                 {/* Tactical Intel - Deadline & Estimate */}
                 <Card className="border-primary/5 shadow-sm rounded-[2rem] overflow-hidden">

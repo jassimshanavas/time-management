@@ -14,7 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Plus } from 'lucide-react';
+import { Plus, Shield, Users } from 'lucide-react';
 
 const COLORS = [
     '#ef4444', // red
@@ -33,6 +33,7 @@ export function CreateProjectDialog({ children }: { children?: React.ReactNode }
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
     const [color, setColor] = useState(COLORS[5]); // Default blue
+    const [visibility, setVisibility] = useState<'private' | 'collaborative'>('private');
     const { addProject } = useStore();
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -44,6 +45,7 @@ export function CreateProjectDialog({ children }: { children?: React.ReactNode }
             description,
             color,
             status: 'active',
+            visibility,
             createdAt: new Date(),
             updatedAt: new Date(),
         });
@@ -100,6 +102,33 @@ export function CreateProjectDialog({ children }: { children?: React.ReactNode }
                                     onClick={() => setColor(c)}
                                 />
                             ))}
+                        </div>
+                    </div>
+                    <div className="space-y-2">
+                        <Label>Visibility</Label>
+                        <div className="grid grid-cols-2 gap-2 pt-1">
+                            <button
+                                type="button"
+                                onClick={() => setVisibility('private')}
+                                className={`flex items-center gap-2 p-2 rounded-xl border-2 transition-all ${visibility === 'private' ? 'bg-primary/10 border-primary text-primary' : 'bg-muted/10 border-transparent text-muted-foreground opacity-60'}`}
+                            >
+                                <Shield className="h-4 w-4" />
+                                <div className="text-left">
+                                    <p className="text-[10px] font-black uppercase tracking-widest leading-none">Private</p>
+                                    <p className="text-[8px] opacity-60 mt-0.5">Only you can see</p>
+                                </div>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setVisibility('collaborative')}
+                                className={`flex items-center gap-2 p-2 rounded-xl border-2 transition-all ${visibility === 'collaborative' ? 'bg-primary/10 border-primary text-primary' : 'bg-muted/10 border-transparent text-muted-foreground opacity-60'}`}
+                            >
+                                <Users className="h-4 w-4" />
+                                <div className="text-left">
+                                    <p className="text-[10px] font-black uppercase tracking-widest leading-none">Collab</p>
+                                    <p className="text-[8px] opacity-60 mt-0.5">Invite others later</p>
+                                </div>
+                            </button>
                         </div>
                     </div>
                     <DialogFooter className="pt-4">
