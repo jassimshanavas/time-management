@@ -671,12 +671,19 @@ function TaskDetailPageContent() {
                 <CardContent className="p-8 text-center">
                   <p className="text-muted-foreground">Task not found</p>
                   <Button
-                    onClick={() => router.push('/tasks')}
+                    onClick={() => {
+                      const fromProject = searchParams.get('fromProject');
+                      if (fromProject) {
+                        router.push(`/projects/${fromProject}`);
+                      } else {
+                        router.push('/tasks');
+                      }
+                    }}
                     className="mt-4"
                     variant="outline"
                   >
                     <ArrowLeft className="h-4 w-4 mr-2" />
-                    Back to Tasks
+                    {searchParams.get('fromProject') ? 'Back to Project' : 'Back to Tasks'}
                   </Button>
                 </CardContent>
               </Card>
@@ -734,7 +741,18 @@ function TaskDetailPageContent() {
                   size="sm"
                   onClick={() => {
                     const fromView = searchParams.get('fromView');
-                    if (fromView === 'kanban' || fromView === 'timeline' || fromView === 'list') {
+                    const fromProject = searchParams.get('fromProject');
+                    const fromTab = searchParams.get('fromTab');
+
+                    if (fromProject) {
+                      let url = `/projects/${fromProject}`;
+                      const params = new URLSearchParams();
+                      if (fromTab) params.set('tab', fromTab);
+                      if (fromView && fromView !== 'overview') params.set('view', fromView);
+
+                      const queryString = params.toString();
+                      router.push(queryString ? `${url}?${queryString}` : url);
+                    } else if (fromView === 'kanban' || fromView === 'timeline' || fromView === 'list') {
                       router.push(fromView === 'list' ? '/tasks' : `/tasks?view=${fromView}`);
                     } else if (fromView === 'time-tracking-gantt') {
                       router.push('/timeline/gantt');

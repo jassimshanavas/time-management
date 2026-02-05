@@ -1,6 +1,7 @@
 'use client';
 
-import { useParams, useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useStore } from '@/lib/store';
 import {
     Plus,
@@ -21,6 +22,7 @@ import {
     ArrowLeft,
     Edit,
     Trash2,
+    Sparkles,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -36,17 +38,73 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { ProjectKanban } from '@/components/projects/project-kanban';
 import { CreateTaskDialog } from '@/components/tasks/create-task-dialog';
 import { CollaboratorManagementDialog } from '@/components/projects/collaborator-management-dialog';
+import { TaskGanttTimeline } from '@/components/task-gantt-timeline';
+import { EditProjectDialog } from '@/components/projects/edit-project-dialog';
+import { CreateNoteDialog } from '@/components/notes/create-note-dialog';
+import { CreateGoalDialog } from '@/components/goals/create-goal-dialog';
 import { format } from 'date-fns';
 import Link from 'next/link';
 import { MainLayout } from '@/components/layout/main-layout';
 import { ProtectedRoute } from '@/components/protected-route';
 import { DataLoader } from '@/components/data-loader';
+import { cn } from '@/lib/utils';
 
 export default function ProjectPage() {
     const router = useRouter();
     const { projectId } = useParams() as { projectId: string };
     const { projects, tasks, notes, goals, habits, timeEntries, deleteProject, userCache } = useStore();
     const project = projects.find(p => p.id === projectId);
+
+    const searchParams = useSearchParams();
+    const initialTab = searchParams.get('tab') || 'overview';
+    const initialView = (searchParams.get('view') as 'kanban' | 'list' | 'timeline') || 'kanban';
+    const initialStatus = (searchParams.get('status') as 'all' | 'todo' | 'in-progress' | 'done') || 'all';
+
+    const [activeTab, setActiveTab] = useState(initialTab);
+    const [taskViewMode, setTaskViewMode] = useState<'kanban' | 'list' | 'timeline'>(initialView);
+    const [statusFilter, setStatusFilter] = useState<'all' | 'todo' | 'in-progress' | 'done'>(initialStatus);
+    const [selectedDate, setSelectedDate] = useState(new Date());
+    const [searchQuery, setSearchQuery] = useState('');
+
+    useEffect(() => {
+        const view = searchParams.get('view') as 'kanban' | 'list' | 'timeline';
+        if (view && ['kanban', 'list', 'timeline'].includes(view)) {
+            setTaskViewMode(view);
+        }
+        const tab = searchParams.get('tab');
+        if (tab) {
+            setActiveTab(tab);
+        }
+        const status = searchParams.get('status') as 'all' | 'todo' | 'in-progress' | 'done';
+        if (status && ['all', 'todo', 'in-progress', 'done'].includes(status)) {
+            setStatusFilter(status);
+        }
+    }, [searchParams]);
+
+    const handleTabChange = (value: string) => {
+        setActiveTab(value);
+        const params = new URLSearchParams(searchParams.toString());
+        params.set('tab', value);
+        router.replace(`/projects/${projectId}?${params.toString()}`, { scroll: false });
+    };
+
+    const handleViewChange = (mode: 'kanban' | 'list' | 'timeline') => {
+        setTaskViewMode(mode);
+        const params = new URLSearchParams(searchParams.toString());
+        params.set('view', mode);
+        router.replace(`/projects/${projectId}?${params.toString()}`, { scroll: false });
+    };
+
+    const handleStatusFilterChange = (status: 'all' | 'todo' | 'in-progress' | 'done') => {
+        setStatusFilter(status);
+        const params = new URLSearchParams(searchParams.toString());
+        if (status === 'all') {
+            params.delete('status');
+        } else {
+            params.set('status', status);
+        }
+        router.replace(`/projects/${projectId}?${params.toString()}`, { scroll: false });
+    };
 
     if (!project) {
         return (
@@ -75,10 +133,27 @@ export default function ProjectPage() {
     }
 
     // Filter items by project
-    const projectTasks = tasks.filter(t => t.projectId === projectId);
-    const projectNotes = notes.filter(n => n.projectId === projectId);
-    const projectGoals = goals.filter(g => g.projectId === projectId);
-    const projectHabits = habits.filter(h => h.projectId === projectId);
+    // Filter items by project and search query
+    const projectTasks = tasks.filter(t => t.projectId === projectId &&
+        (t.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            t.description?.toLowerCase().includes(searchQuery.toLowerCase())));
+
+    const projectNotes = notes.filter(n => n.projectId === projectId &&
+        (n.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            n.content.toLowerCase().includes(searchQuery.toLowerCase())));
+
+    const projectGoals = goals.filter(g => g.projectId === projectId &&
+        (g.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            g.description?.toLowerCase().includes(searchQuery.toLowerCase())));
+
+    const projectHabits = habits.filter(h => h.projectId === projectId &&
+        h.title.toLowerCase().includes(searchQuery.toLowerCase()));
+
+    const filteredProjectTasks = projectTasks.filter(t => {
+        if (statusFilter === 'all') return true;
+        return t.status === statusFilter;
+    });
+
     const projectTimeEntries = timeEntries.filter(e => e.projectId === projectId);
 
     // Calculate statistics
@@ -139,19 +214,23 @@ export default function ProjectPage() {
                                         <input
                                             type="text"
                                             placeholder="Audit this workspace..."
+                                            value={searchQuery}
+                                            onChange={(e) => setSearchQuery(e.target.value)}
                                             className="h-10 pl-10 pr-4 bg-background/50 backdrop-blur-sm border-primary/10 rounded-2xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-primary/20 w-full lg:w-64 transition-all"
                                         />
                                     </div>
-                                    <Button variant="outline" size="icon" className="rounded-xl h-10 w-10 bg-background/50 shrink-0 shadow-sm border-primary/5" onClick={() => { }}>
-                                        <Edit className="h-4 w-4" />
-                                    </Button>
+                                    <EditProjectDialog project={project}>
+                                        <Button variant="outline" size="icon" className="rounded-xl h-10 w-10 bg-background/50 shrink-0 shadow-sm border-primary/5">
+                                            <Edit className="h-4 w-4" />
+                                        </Button>
+                                    </EditProjectDialog>
                                     <Button variant="outline" size="icon" className="rounded-xl h-10 w-10 bg-background/50 hover:bg-destructive/10 hover:text-destructive shrink-0 shadow-sm border-primary/5" onClick={handleDeleteProject}>
                                         <Trash2 className="h-4 w-4" />
                                     </Button>
                                 </div>
                             </div>
 
-                            <Tabs defaultValue="overview" className="w-full">
+                            <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
                                 <div className="flex flex-col md:flex-row items-center justify-between w-full gap-6 pt-2">
                                     <TabsList className="bg-muted/30 p-1 rounded-2xl backdrop-blur-md border border-primary/5 self-stretch md:self-auto overflow-x-auto overflow-y-hidden no-scrollbar justify-start">
                                         <TabsTrigger value="overview" className="rounded-xl px-4 lg:px-6 font-black text-[10px] uppercase tracking-widest data-[state=active]:bg-background data-[state=active]:shadow-lg active:scale-95 transition-all">Overview</TabsTrigger>
@@ -354,7 +433,7 @@ export default function ProjectPage() {
                                                     {recentTasks.map((task) => (
                                                         <Link
                                                             key={task.id}
-                                                            href="/tasks"
+                                                            href={`/tasks/${task.id}?fromView=overview&fromProject=${projectId}&fromTab=overview`}
                                                             className="flex items-center justify-between p-4 px-6 hover:bg-primary/5 transition-all group lg:last:border-none"
                                                         >
                                                             <div className="flex items-center gap-4 flex-1">
@@ -380,17 +459,41 @@ export default function ProjectPage() {
                                 <TabsContent value="tasks" className="mt-6 lg:mt-8">
                                     <div className="flex flex-col sm:flex-row gap-4 lg:items-center justify-between mb-6">
                                         <div className="flex items-center gap-1 bg-muted/30 p-1 rounded-xl backdrop-blur-md border border-primary/5 w-full sm:w-auto overflow-x-auto no-scrollbar">
-                                            <Button variant="ghost" size="sm" className="flex-1 sm:flex-initial h-8 px-4 rounded-lg font-black text-[9px] uppercase tracking-widest bg-background shadow-md">
+                                            <Button
+                                                variant={taskViewMode === 'kanban' ? 'default' : 'ghost'}
+                                                size="sm"
+                                                onClick={() => handleViewChange('kanban')}
+                                                className={cn(
+                                                    "flex-1 sm:flex-initial h-8 px-4 rounded-lg font-black text-[9px] uppercase tracking-widest transition-all",
+                                                    taskViewMode !== 'kanban' && "hover:bg-background/50 opacity-60"
+                                                )}
+                                            >
                                                 <LayoutGrid className="h-3.5 w-3.5 mr-1.5" />
                                                 Kanban
                                             </Button>
-                                            <Button variant="ghost" size="sm" className="flex-1 sm:flex-initial h-8 px-4 rounded-lg font-black text-[9px] uppercase tracking-widest hover:bg-background/50 opacity-60">
-                                                <TableIcon className="h-3.5 w-3.5 mr-1.5" />
-                                                Table
-                                            </Button>
-                                            <Button variant="ghost" size="sm" className="flex-1 sm:flex-initial h-8 px-4 rounded-lg font-black text-[9px] uppercase tracking-widest hover:bg-background/50 opacity-60">
+                                            <Button
+                                                variant={taskViewMode === 'list' ? 'default' : 'ghost'}
+                                                size="sm"
+                                                onClick={() => handleViewChange('list')}
+                                                className={cn(
+                                                    "flex-1 sm:flex-initial h-8 px-4 rounded-lg font-black text-[9px] uppercase tracking-widest transition-all",
+                                                    taskViewMode !== 'list' && "hover:bg-background/50 opacity-60"
+                                                )}
+                                            >
                                                 <List className="h-3.5 w-3.5 mr-1.5" />
                                                 List
+                                            </Button>
+                                            <Button
+                                                variant={taskViewMode === 'timeline' ? 'default' : 'ghost'}
+                                                size="sm"
+                                                onClick={() => handleViewChange('timeline')}
+                                                className={cn(
+                                                    "flex-1 sm:flex-initial h-8 px-4 rounded-lg font-black text-[9px] uppercase tracking-widest transition-all",
+                                                    taskViewMode !== 'timeline' && "hover:bg-background/50 opacity-60"
+                                                )}
+                                            >
+                                                <Clock className="h-3.5 w-3.5 mr-1.5" />
+                                                Timeline
                                             </Button>
                                         </div>
                                         <div className="flex items-center gap-2 w-full sm:w-auto">
@@ -405,17 +508,136 @@ export default function ProjectPage() {
                                             </Button>
                                         </div>
                                     </div>
+
                                     <div className="p-3 sm:p-5 rounded-3xl bg-muted/20 border border-primary/5 backdrop-blur-sm overflow-hidden min-h-[500px]">
-                                        <ProjectKanban projectId={projectId} tasks={projectTasks} />
+                                        {taskViewMode === 'kanban' && (
+                                            <ProjectKanban projectId={projectId} tasks={projectTasks} />
+                                        )}
+
+                                        {taskViewMode === 'list' && (
+                                            <div className="space-y-4">
+                                                <div className="flex items-center gap-2 pb-2 overflow-x-auto no-scrollbar">
+                                                    {[
+                                                        { id: 'all', label: 'All', count: projectTasks.length },
+                                                        { id: 'todo', label: 'To Do', count: projectTasks.filter(t => t.status === 'todo').length },
+                                                        { id: 'in-progress', label: 'Active', count: projectTasks.filter(t => t.status === 'in-progress').length },
+                                                        { id: 'done', label: 'Done', count: projectTasks.filter(t => t.status === 'done').length }
+                                                    ].map((filter) => (
+                                                        <Button
+                                                            key={filter.id}
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            onClick={() => handleStatusFilterChange(filter.id as any)}
+                                                            className={cn(
+                                                                "h-8 rounded-xl font-black text-[9px] uppercase tracking-widest px-4 transition-all whitespace-nowrap",
+                                                                statusFilter === filter.id
+                                                                    ? "bg-primary/20 text-primary border border-primary/20 shadow-sm"
+                                                                    : "text-muted-foreground/60 hover:text-primary hover:bg-primary/5 border border-transparent"
+                                                            )}
+                                                        >
+                                                            {filter.label}
+                                                            <span className={cn(
+                                                                "ml-2 px-1.5 py-0.5 rounded-md text-[8px]",
+                                                                statusFilter === filter.id ? "bg-primary text-primary-foreground" : "bg-muted/50"
+                                                            )}>
+                                                                {filter.count}
+                                                            </span>
+                                                        </Button>
+                                                    ))}
+                                                </div>
+
+                                                <div className="space-y-3">
+                                                    {filteredProjectTasks.length === 0 ? (
+                                                        <div className="flex flex-col items-center justify-center py-20 text-center opacity-30 grayscale">
+                                                            <Sparkles className="h-10 w-10 mb-3" />
+                                                            <p className="text-[10px] font-black uppercase tracking-widest">Workspace Void</p>
+                                                        </div>
+                                                    ) : (
+                                                        filteredProjectTasks.map((task) => (
+                                                            <div
+                                                                key={task.id}
+                                                                className="group relative flex items-center gap-4 p-4 rounded-xl border bg-background/40 backdrop-blur-md hover:border-primary/20 hover:shadow-xl transition-all duration-300 cursor-pointer"
+                                                                onClick={() => router.push(`/tasks/${task.id}?fromView=list&fromProject=${projectId}&fromTab=tasks`)}
+                                                            >
+                                                                <div className={`absolute left-0 top-0 bottom-0 w-1 rounded-l-lg ${task.priority === 'high' ? 'bg-rose-500' :
+                                                                    task.priority === 'medium' ? 'bg-amber-500' :
+                                                                        'bg-blue-500'
+                                                                    }`} />
+
+                                                                <div className="flex-1 min-w-0">
+                                                                    <h3 className={cn(
+                                                                        "font-bold text-sm truncate",
+                                                                        task.status === 'done' && "line-through text-muted-foreground/60"
+                                                                    )}>
+                                                                        {task.title}
+                                                                    </h3>
+                                                                    <div className="flex items-center gap-2 mt-1">
+                                                                        <Badge variant="outline" className="text-[8px] px-1 py-0 h-3.5 uppercase font-black border-transparent bg-muted/50">
+                                                                            {task.priority}
+                                                                        </Badge>
+                                                                        {task.deadline && (
+                                                                            <span className="text-[9px] font-black text-muted-foreground/60 uppercase tracking-tighter">
+                                                                                <Clock className="h-3 w-3 inline mr-1" />
+                                                                                {format(new Date(task.deadline), 'MMM d')}
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+
+                                                                <Badge variant="outline" className={cn(
+                                                                    "font-black uppercase text-[8px] tracking-widest px-2",
+                                                                    task.status === 'done' ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" :
+                                                                        task.status === 'in-progress' ? "bg-blue-500/10 text-blue-500 border-blue-500/20" :
+                                                                            "bg-muted/50"
+                                                                )}>
+                                                                    {task.status}
+                                                                </Badge>
+                                                            </div>
+                                                        ))
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {taskViewMode === 'timeline' && (
+                                            <div className="space-y-6">
+                                                <div className="flex items-center justify-between">
+                                                    <Button variant="outline" size="sm" className="h-8 rounded-xl font-black text-[9px] uppercase tracking-widest" onClick={() => setSelectedDate(new Date(selectedDate.getTime() - 86400000))}>
+                                                        Previous Day
+                                                    </Button>
+                                                    <div className="text-xs font-black uppercase tracking-widest text-primary italic">
+                                                        {format(selectedDate, 'MMMM d, yyyy')}
+                                                    </div>
+                                                    <Button variant="outline" size="sm" className="h-8 rounded-xl font-black text-[9px] uppercase tracking-widest" onClick={() => setSelectedDate(new Date(selectedDate.getTime() + 86400000))}>
+                                                        Next Day
+                                                    </Button>
+                                                </div>
+                                                <div className="bg-background/20 rounded-2xl overflow-hidden border border-primary/5">
+                                                    <TaskGanttTimeline
+                                                        tasks={projectTasks}
+                                                        goals={projectGoals}
+                                                        selectedDate={selectedDate}
+                                                    />
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                 </TabsContent>
 
                                 <TabsContent value="notes" className="mt-8 space-y-6">
                                     <div className="flex items-center justify-between">
                                         <h3 className="text-sm lg:text-base font-black uppercase tracking-widest text-primary">Neural Archives</h3>
-                                        <Link href="/notes">
-                                            <Button variant="outline" size="sm" className="rounded-xl px-4 font-black text-[10px] uppercase tracking-widest h-8 bg-background/50 border-primary/5 shadow-sm">View vault</Button>
-                                        </Link>
+                                        <div className="flex items-center gap-2">
+                                            <CreateNoteDialog projectId={projectId}>
+                                                <Button size="sm" className="h-8 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-primary/10">
+                                                    <Plus className="h-3 w-3 mr-1.5" />
+                                                    Add Entry
+                                                </Button>
+                                            </CreateNoteDialog>
+                                            <Link href="/notes">
+                                                <Button variant="outline" size="sm" className="rounded-xl px-4 font-black text-[10px] uppercase tracking-widest h-8 bg-background/50 border-primary/5 shadow-sm">View vault</Button>
+                                            </Link>
+                                        </div>
                                     </div>
                                     {projectNotes.length === 0 ? (
                                         <Card className="bg-background/40 backdrop-blur-sm border-dashed border-2 py-16 rounded-3xl opacity-20 grayscale">
@@ -448,9 +670,17 @@ export default function ProjectPage() {
                                 <TabsContent value="goals" className="mt-8 space-y-6">
                                     <div className="flex items-center justify-between">
                                         <h3 className="text-sm lg:text-base font-black uppercase tracking-widest text-primary">Strategic North Stars</h3>
-                                        <Link href="/goals">
-                                            <Button variant="outline" size="sm" className="rounded-xl px-4 font-black text-[10px] uppercase tracking-widest h-8 bg-background/50 border-primary/5 shadow-sm">Modify goals</Button>
-                                        </Link>
+                                        <div className="flex items-center gap-2">
+                                            <CreateGoalDialog projectId={projectId}>
+                                                <Button size="sm" className="h-8 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-primary/10">
+                                                    <Plus className="h-3 w-3 mr-1.5" />
+                                                    Initiate Objective
+                                                </Button>
+                                            </CreateGoalDialog>
+                                            <Link href="/goals">
+                                                <Button variant="outline" size="sm" className="rounded-xl px-4 font-black text-[10px] uppercase tracking-widest h-8 bg-background/50 border-primary/5 shadow-sm">Modify goals</Button>
+                                            </Link>
+                                        </div>
                                     </div>
                                     {projectGoals.length === 0 ? (
                                         <Card className="bg-background/40 backdrop-blur-sm border-dashed border-2 py-16 rounded-3xl opacity-20 grayscale">

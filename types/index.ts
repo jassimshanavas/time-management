@@ -99,6 +99,8 @@ export interface Goal {
   id: string;
   title: string;
   description?: string;
+  color?: string;
+  emoji?: string;
   targetDate?: Date;
   progress: number; // 0-100
   milestones: Milestone[];

@@ -1,14 +1,14 @@
 'use client';
 
-import { Task } from '@/types';
+import { useState } from 'react';
+import { useStore } from '@/lib/store';
 import { TaskCard } from './task-card';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
-import { Plus } from 'lucide-react';
+import { Plus, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { CreateTaskDialog } from '../tasks/create-task-dialog';
-import { TaskStatus } from '@/types';
+import { Task, TaskStatus } from '@/types';
 
 interface ProjectKanbanProps {
     projectId: string;
@@ -16,69 +16,133 @@ interface ProjectKanbanProps {
 }
 
 const COLUMNS = [
-    { id: 'todo', title: 'To Do', color: 'border-slate-200' },
-    { id: 'in-progress', title: 'In Progress', color: 'border-blue-500' },
-    { id: 'in-review', title: 'In Review', color: 'border-orange-500' },
-    { id: 'done', title: 'Completed', color: 'border-green-500' },
+    { id: 'todo' as TaskStatus, title: 'To Do Pulse', color: 'border-slate-200', text: 'To Do Pulse' },
+    { id: 'in-progress' as TaskStatus, title: 'Active Flow', color: 'border-blue-500', text: 'Active Flow' },
+    { id: 'done' as TaskStatus, title: 'Materialized', color: 'border-green-500', text: 'Materialized' },
 ] as const;
 
 export function ProjectKanban({ projectId, tasks }: ProjectKanbanProps) {
-    const getTasksByStatus = (status: string) => {
-        // Mapping our simple TaskStatus to the 4 columns
-        // We treat 'in-review' as empty for now until we add status
-        if (status === 'in-review') return [];
+    const { updateTask } = useStore();
+    const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
+    const [dropZone, setDropZone] = useState<TaskStatus | null>(null);
+
+    const getTasksByStatus = (status: TaskStatus) => {
         return tasks.filter((t) => t.status === status);
     };
 
+    const handleDragStart = (e: React.DragEvent, task: Task) => {
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', task.id);
+        setDraggedTaskId(task.id);
+        if (e.currentTarget instanceof HTMLElement) {
+            e.currentTarget.style.opacity = '0.5';
+        }
+    };
+
+    const handleDragEnd = (e: React.DragEvent) => {
+        setDraggedTaskId(null);
+        if (e.currentTarget instanceof HTMLElement) {
+            e.currentTarget.style.opacity = '1';
+        }
+    };
+
+    const handleDragOver = (e: React.DragEvent, status: TaskStatus) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        setDropZone(status);
+    };
+
+    const handleDragLeave = () => {
+        setDropZone(null);
+    };
+
+    const handleDrop = async (e: React.DragEvent, newStatus: TaskStatus) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const taskId = e.dataTransfer.getData('text/plain');
+        if (taskId) {
+            await updateTask(taskId, { status: newStatus });
+        }
+
+        setDraggedTaskId(null);
+        setDropZone(null);
+    };
+
     return (
-        <div className="h-[calc(100vh-320px)] min-h-[500px]">
-            <div className="flex lg:grid lg:grid-cols-4 gap-4 lg:gap-6 h-full overflow-x-auto lg:overflow-x-visible pb-4 no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0">
-                {COLUMNS.map((column) => {
-                    const columnTasks = getTasksByStatus(column.id);
+        <div className="flex lg:grid lg:grid-cols-3 gap-6 h-full overflow-x-auto no-scrollbar pb-4 min-h-[600px]">
+            {COLUMNS.map((column) => {
+                const columnTasks = getTasksByStatus(column.id);
 
-                    return (
-                        <div key={column.id} className="flex flex-col h-full min-w-[280px] sm:min-w-[300px] flex-shrink-0 lg:flex-shrink">
-                            <div className={cn(
-                                "flex items-center justify-between mb-4 pb-2 border-b-2 transition-colors duration-300",
-                                column.color
-                            )}>
-                                <div className="flex items-center gap-2.5">
-                                    <h3 className="font-black text-[10px] uppercase tracking-widest text-muted-foreground/80">
-                                        {column.title}
-                                    </h3>
-                                    <Badge variant="secondary" className="bg-muted/50 text-muted-foreground font-black text-[10px] h-5 min-w-5 flex items-center justify-center border-none">
-                                        {columnTasks.length}
-                                    </Badge>
-                                </div>
-                                <CreateTaskDialog projectId={projectId} defaultStatus={column.id === 'in-review' ? 'in-progress' : column.id as TaskStatus}>
-                                    <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-primary rounded-lg transition-all active:scale-95">
-                                        <Plus className="h-3.5 w-3.5" />
-                                    </Button>
-                                </CreateTaskDialog>
+                return (
+                    <div
+                        key={column.id}
+                        className="flex flex-col h-full min-w-[280px] sm:min-w-[320px] flex-shrink-0 lg:flex-shrink space-y-4"
+                        onDragOver={(e) => handleDragOver(e, column.id)}
+                        onDragLeave={handleDragLeave}
+                        onDrop={(e) => handleDrop(e, column.id)}
+                    >
+                        <div className={cn(
+                            "flex items-center justify-between px-1 mb-2 pb-2 border-b-2 transition-colors duration-300",
+                            column.id === 'todo' ? 'border-slate-200/50' :
+                                column.id === 'in-progress' ? 'border-blue-500/50' :
+                                    'border-emerald-500/50'
+                        )}>
+                            <div className="flex items-center gap-2.5">
+                                <h3 className={cn(
+                                    "font-black text-[10px] uppercase tracking-widest italic",
+                                    column.id === 'todo' ? 'text-muted-foreground/80' :
+                                        column.id === 'in-progress' ? 'text-primary' :
+                                            'text-emerald-500'
+                                )}>
+                                    {column.title}
+                                </h3>
+                                <Badge variant="secondary" className={cn(
+                                    "font-black text-[10px] border-none rounded-lg h-5",
+                                    column.id === 'todo' ? 'bg-muted/50 text-muted-foreground' :
+                                        column.id === 'in-progress' ? 'bg-blue-500/10 text-blue-500' :
+                                            'bg-emerald-500/10 text-emerald-500'
+                                )}>
+                                    {columnTasks.length}
+                                </Badge>
                             </div>
-
-                            <ScrollArea className="flex-1 pr-1 -mr-1">
-                                <div className="space-y-3 pb-4">
-                                    {columnTasks.map((task) => (
-                                        <div key={task.id} className="transform transition-all active:scale-[0.98]">
-                                            <TaskCard task={task} />
-                                        </div>
-                                    ))}
-
-                                    {columnTasks.length === 0 && (
-                                        <div className="border-2 border-dashed border-primary/5 rounded-2xl p-6 flex flex-col items-center justify-center text-center opacity-30 group hover:opacity-50 transition-opacity">
-                                            <div className="h-9 w-9 bg-muted/50 rounded-xl flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
-                                                <Plus className="h-4 w-4" />
-                                            </div>
-                                            <p className="text-[10px] font-black uppercase tracking-widest">Awaiting Input</p>
-                                        </div>
-                                    )}
-                                </div>
-                            </ScrollArea>
+                            <CreateTaskDialog projectId={projectId} defaultStatus={column.id}>
+                                <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-primary rounded-lg transition-all active:scale-95">
+                                    <Plus className="h-3.5 w-3.5" />
+                                </Button>
+                            </CreateTaskDialog>
                         </div>
-                    );
-                })}
-            </div>
+
+                        <div className={cn(
+                            "flex-1 space-y-3 min-h-[400px] rounded-2xl p-3 border border-primary/5 backdrop-blur-sm transition-all duration-300",
+                            dropZone === column.id ? "bg-primary/10 border-primary border-dashed" : "bg-muted/10"
+                        )}>
+                            {columnTasks.map((task) => (
+                                <div
+                                    key={task.id}
+                                    draggable
+                                    onDragStart={(e) => handleDragStart(e, task)}
+                                    onDragEnd={handleDragEnd}
+                                    className="cursor-grab active:cursor-grabbing transition-all active:scale-[0.98]"
+                                >
+                                    <TaskCard task={task} />
+                                </div>
+                            ))}
+
+                            {columnTasks.length === 0 && (
+                                <div className="flex flex-col items-center justify-center h-40 opacity-20 italic">
+                                    <Sparkles className="h-8 w-8 mb-2" />
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-center">
+                                        {column.id === 'todo' ? 'Workspace Void' :
+                                            column.id === 'in-progress' ? 'No Active Synapses' :
+                                                'History Silent'}
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                );
+            })}
         </div>
     );
 }
