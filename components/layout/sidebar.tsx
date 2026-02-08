@@ -29,6 +29,7 @@ import {
   Home,
   Trophy,
   Sparkles,
+  Layout,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -333,6 +334,21 @@ export function Sidebar({ isCollapsed = false, onToggleCollapse, onMobileClose }
                 <Calendar className={cn('h-5 w-5 text-indigo-500', isCollapsed ? 'mr-0' : 'mr-3')} />
                 <span className={cn('transition-all overflow-hidden', isCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100')}>
                   Today
+                </span>
+              </Link>
+
+              <Link
+                href="/timeline/day"
+                onClick={onMobileClose}
+                className={cn(
+                  'text-sm flex p-3 w-full font-medium cursor-pointer hover:bg-primary/10 rounded-lg transition-all',
+                  pathname === '/timeline/day' ? 'bg-primary/10 text-primary' : 'text-muted-foreground',
+                  isCollapsed ? 'justify-center' : 'justify-start'
+                )}
+              >
+                <Layout className={cn('h-5 w-5 text-violet-500', isCollapsed ? 'mr-0' : 'mr-3')} />
+                <span className={cn('transition-all overflow-hidden', isCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100')}>
+                  Plan My Day
                 </span>
               </Link>
 

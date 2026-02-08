@@ -117,12 +117,6 @@ export default function TimelinePage() {
                 <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mt-1 opacity-70">A immutable transcript of your strategic evolution</p>
               </div>
               <div className="flex flex-wrap items-center gap-3">
-                <Link href="/timeline/day" className="flex-1 sm:flex-initial">
-                  <Button className="w-full h-11 px-6 rounded-xl shadow-lg shadow-primary/10 bg-primary font-black text-[10px] uppercase tracking-widest transition-all hover:scale-105 active:scale-95">
-                    <Layout className="h-4 w-4 mr-2" />
-                    Interactive Planner
-                  </Button>
-                </Link>
                 <Link href="/timeline/gantt" className="flex-1 sm:flex-initial">
                   <Button variant="outline" className="w-full h-11 px-6 rounded-xl bg-background/40 backdrop-blur-sm border-primary/10 font-black text-[10px] uppercase tracking-widest transition-all hover:scale-105 active:scale-95">
                     <BarChart3 className="h-4 w-4 mr-2" />

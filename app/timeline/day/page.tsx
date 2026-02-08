@@ -21,11 +21,13 @@ import {
 import { format, addDays, subDays, startOfDay, isSameDay, addMinutes, differenceInMinutes, startOfHour, setHours, setMinutes, parseISO } from 'date-fns';
 import { ProtectedRoute } from '@/components/protected-route';
 import { DataLoader } from '@/components/data-loader';
-import { motion, AnimatePresence, useMotionValue, useTransform, useDragControls } from 'framer-motion';
+import { motion, AnimatePresence, useDragControls } from 'framer-motion';
 import { toast, Toaster } from 'sonner';
 import { Task } from '@/types';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
+import { EisenhowerMatrix } from '@/components/timeline/eisenhower-matrix';
+import { Grid2X2, List } from 'lucide-react';
 
 const HOUR_HEIGHT = 60;
 const STEP_MINUTES = 15;
@@ -50,7 +52,34 @@ function DayTimelineContent() {
         }
     }, [searchParams]);
     const [searchQuery, setSearchQuery] = useState('');
+    const [viewMode, setViewMode] = useState<'list' | 'matrix'>('list');
+    const [sidebarWidth, setSidebarWidth] = useState(280);
+    const [isResizingSidebar, setIsResizingSidebar] = useState(false);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+    const handleMouseMove = (e: MouseEvent) => {
+        if (!isResizingSidebar) return;
+        const newWidth = Math.max(200, Math.min(600, e.clientX - 40));
+        setSidebarWidth(newWidth);
+    };
+
+    const handleMouseUp = () => {
+        setIsResizingSidebar(false);
+    };
+
+    useEffect(() => {
+        if (isResizingSidebar) {
+            window.addEventListener('mousemove', handleMouseMove);
+            window.addEventListener('mouseup', handleMouseUp);
+        } else {
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleMouseUp);
+        }
+        return () => {
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleMouseUp);
+        };
+    }, [isResizingSidebar]);
 
     // Filter tasks by project and date
     const filterByWorkspace = <T extends { projectId?: string }>(items: T[]) => {
@@ -133,6 +162,45 @@ function DayTimelineContent() {
         }
     }
 
+    const handleScheduleFromMatrix = async (task: Task, dropY?: number) => {
+        // If it was just a click (no dropY) or not dropped in timeline area
+        if (!dropY || !scrollContainerRef.current) {
+            handleScheduleUnscheduled(task);
+            return;
+        }
+
+        const rect = scrollContainerRef.current.getBoundingClientRect();
+
+        // Check if drop is within the horizontal bounds of the timeline
+        // (Roughly, since the left panel is on the left)
+        if (dropY < rect.top || dropY > rect.bottom) {
+            // Not dropped in the vertical scroll area
+            return;
+        }
+
+        const relativeY = dropY - rect.top + scrollContainerRef.current.scrollTop;
+
+        // Convert vertical position to time
+        const totalMinutes = (relativeY / HOUR_HEIGHT) * 60;
+        const roundedMinutes = Math.round(totalMinutes / STEP_MINUTES) * STEP_MINUTES;
+
+        const newStart = startOfDay(selectedDate);
+        const updatedStart = addMinutes(newStart, roundedMinutes);
+        const duration = task.estimatedDuration || 60;
+        const updatedEnd = addMinutes(updatedStart, duration);
+
+        try {
+            await updateTask(task.id, {
+                scheduledStart: updatedStart,
+                scheduledEnd: updatedEnd,
+                estimatedDuration: duration
+            });
+            toast.success(`Deployed: ${task.title} to ${format(updatedStart, 'HH:mm')}`);
+        } catch (e) {
+            toast.error("Strategic deployment failed");
+        }
+    };
+
     // Scroll to current time or 8 AM on mount
     useEffect(() => {
         const interval = setInterval(() => setCurrentTime(new Date()), 60000);
@@ -158,12 +226,31 @@ function DayTimelineContent() {
                             <div>
                                 <h1 className="text-2xl sm:text-3xl font-black tracking-tight flex items-center gap-2 bg-gradient-to-r from-foreground to-foreground/60 bg-clip-text text-transparent">
                                     <Clock className="h-6 w-6 text-primary animate-pulse" />
-                                    Day Velocity
+                                    Plan My Day
                                 </h1>
                                 <p className="text-[10px] text-muted-foreground font-medium mt-0.5">Orchestrate your daily flow with precision</p>
                             </div>
 
                             <div className="flex flex-col sm:flex-row items-center gap-2 bg-background/40 backdrop-blur-xl p-1.5 rounded-xl border border-primary/10 shadow-lg">
+                                <div className="flex items-center gap-1 bg-background/40 backdrop-blur-xl p-1 rounded-xl border border-primary/10 shadow-lg mr-2">
+                                    <Button
+                                        variant={viewMode === 'list' ? 'secondary' : 'ghost'}
+                                        size="sm"
+                                        className={cn("h-8 px-4 rounded-lg font-black text-[10px] uppercase tracking-widest gap-2", viewMode === 'list' && "bg-primary text-primary-foreground")}
+                                        onClick={() => setViewMode('list')}
+                                    >
+                                        List
+                                    </Button>
+                                    <Button
+                                        variant={viewMode === 'matrix' ? 'secondary' : 'ghost'}
+                                        size="sm"
+                                        className={cn("h-8 px-4 rounded-lg font-black text-[10px] uppercase tracking-widest gap-2", viewMode === 'matrix' && "bg-primary text-primary-foreground")}
+                                        onClick={() => setViewMode('matrix')}
+                                    >
+                                        <Grid2X2 className="h-4 w-4" />
+                                        Matrix
+                                    </Button>
+                                </div>
                                 <div className="flex items-center gap-0.5">
                                     <Button variant="ghost" size="icon" onClick={() => setSelectedDate(subDays(selectedDate, 1))} className="h-8 w-8 rounded-lg hover:bg-primary/10">
                                         <ChevronLeft className="h-3.5 w-3.5" />
@@ -185,63 +272,127 @@ function DayTimelineContent() {
                             </div>
                         </div>
 
-                        <div className="flex flex-col lg:flex-row gap-8 flex-1 min-h-0 bg-transparent">
+                        <div className="flex flex-col lg:flex-row gap-4 flex-1 min-h-0 bg-transparent relative">
                             {/* Left Panel: Unscheduled Tasks (Responsive: Top on mobile, Left on desktop) */}
-                            <Card className="w-full lg:w-72 flex flex-col bg-background/40 backdrop-blur-xl border-primary/5 shadow-xl rounded-2xl overflow-hidden shrink-0 h-[350px] lg:h-full">
-                                <CardHeader className="pb-3 px-4 bg-muted/30 border-b border-primary/5">
-                                    <div className="flex items-center justify-between mb-2">
-                                        <CardTitle className="text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5 text-primary">
-                                            <Layout className="h-3.5 w-3.5" />
-                                            Backlog
-                                        </CardTitle>
-                                        <Badge variant="secondary" className="font-black h-4 px-1.5 text-[9px] rounded-md">{unscheduledTasks.length}</Badge>
-                                    </div>
-                                    <div className="relative group">
-                                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground transition-colors group-focus-within:text-primary" />
-                                        <Input
-                                            placeholder="Audit tasks..."
-                                            className="h-8 pl-8 text-xs bg-background/50 border-primary/5 rounded-lg focus:ring-2 focus:ring-primary/20 transition-all"
-                                            value={searchQuery}
-                                            onChange={e => setSearchQuery(e.target.value)}
-                                        />
-                                    </div>
-                                </CardHeader>
-                                <CardContent className="flex-1 overflow-y-auto p-2.5 space-y-2">
-                                    {unscheduledTasks.map(task => (
-                                        <div
-                                            key={task.id}
-                                            className="p-3 bg-background/60 backdrop-blur-sm rounded-xl border border-transparent hover:border-primary/20 cursor-pointer transition-all hover:shadow-md group shadow-sm active:scale-[0.98]"
-                                            onClick={() => handleScheduleUnscheduled(task)}
+                            <Card
+                                className={cn(
+                                    "flex flex-col bg-background/40 backdrop-blur-xl border-primary/5 shadow-xl rounded-2xl overflow-hidden shrink-0 transition-all duration-300",
+                                    "h-[450px] lg:h-full"
+                                )}
+                                style={{
+                                    width: viewMode === 'matrix' ? `${sidebarWidth * 1.5}px` : `${sidebarWidth}px`,
+                                    maxWidth: '100%'
+                                }}
+                            >
+                                <CardHeader className="p-0 border-b border-primary/5 bg-background/20 backdrop-blur-md">
+                                    <div className="flex p-1 gap-1">
+                                        <Button
+                                            variant={viewMode === 'list' ? 'secondary' : 'ghost'}
+                                            size="sm"
+                                            className={cn(
+                                                "flex-1 h-9 rounded-xl font-black text-[10px] uppercase tracking-widest gap-2 transition-all duration-300",
+                                                viewMode === 'list'
+                                                    ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
+                                                    : "text-muted-foreground hover:bg-primary/5 hover:text-primary"
+                                            )}
+                                            onClick={() => setViewMode('list')}
                                         >
-                                            <div className="flex items-start justify-between gap-2 mb-2">
-                                                <h4 className="text-xs font-bold leading-tight group-hover:text-primary transition-colors line-clamp-1">{task.title}</h4>
-                                                <div className={cn(
-                                                    "h-1.5 w-1.5 rounded-full mt-1 shrink-0 shadow-[0_0_6px_currentColor]",
-                                                    task.priority === 'high' ? 'text-red-500 bg-red-500' : task.priority === 'medium' ? 'text-yellow-500 bg-yellow-500' : 'text-blue-500 bg-blue-500'
-                                                )} />
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground">
-                                                    <Clock className="h-2.5 w-2.5" />
-                                                    <span className="text-[9px] font-black font-mono">
-                                                        {task.estimatedDuration || 60}m
-                                                    </span>
+                                            <List className="h-3.5 w-3.5" />
+                                            Backlog List
+                                        </Button>
+                                        <Button
+                                            variant={viewMode === 'matrix' ? 'secondary' : 'ghost'}
+                                            size="sm"
+                                            className={cn(
+                                                "flex-1 h-9 rounded-xl font-black text-[10px] uppercase tracking-widest gap-2 transition-all duration-300",
+                                                viewMode === 'matrix'
+                                                    ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
+                                                    : "text-muted-foreground hover:bg-primary/5 hover:text-primary"
+                                            )}
+                                            onClick={() => setViewMode('matrix')}
+                                        >
+                                            <Grid2X2 className="h-3.5 w-3.5" />
+                                            Strategy Matrix
+                                        </Button>
+                                    </div>
+                                    <AnimatePresence mode="wait">
+                                        {viewMode === 'list' && (
+                                            <motion.div
+                                                initial={{ opacity: 0, y: -10 }}
+                                                animate={{ opacity: 1, y: 0 }}
+                                                exit={{ opacity: 0, y: -10 }}
+                                                className="relative group"
+                                            >
+                                                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground transition-colors group-focus-within:text-primary" />
+                                                <Input
+                                                    placeholder="Audit tasks..."
+                                                    className="h-8 pl-8 text-xs bg-background/50 border-primary/5 rounded-lg focus:ring-2 focus:ring-primary/20 transition-all"
+                                                    value={searchQuery}
+                                                    onChange={e => setSearchQuery(e.target.value)}
+                                                />
+                                            </motion.div>
+                                        )}
+                                    </AnimatePresence>
+                                </CardHeader>
+                                <CardContent className="flex-1 overflow-y-auto p-2.5 space-y-2 custom-scrollbar">
+                                    {viewMode === 'list' ? (
+                                        <>
+                                            {unscheduledTasks.map(task => (
+                                                <div
+                                                    key={task.id}
+                                                    className="p-3 bg-background/60 backdrop-blur-sm rounded-xl border border-transparent hover:border-primary/20 cursor-pointer transition-all hover:shadow-md group shadow-sm active:scale-[0.98]"
+                                                    onClick={() => handleScheduleUnscheduled(task)}
+                                                >
+                                                    <div className="flex items-start justify-between gap-2 mb-2">
+                                                        <h4 className="text-xs font-bold leading-tight group-hover:text-primary transition-colors line-clamp-1">{task.title}</h4>
+                                                        <div className={cn(
+                                                            "h-1.5 w-1.5 rounded-full mt-1 shrink-0 shadow-[0_0_6px_currentColor]",
+                                                            task.priority === 'high' ? 'text-red-500 bg-red-500' : task.priority === 'medium' ? 'text-yellow-500 bg-yellow-500' : 'text-blue-500 bg-blue-500'
+                                                        )} />
+                                                    </div>
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground">
+                                                            <Clock className="h-2.5 w-2.5" />
+                                                            <span className="text-[9px] font-black font-mono">
+                                                                {task.estimatedDuration || 60}m
+                                                            </span>
+                                                        </div>
+                                                        <div className="flex-1" />
+                                                        <div className="opacity-0 group-hover:opacity-100 transition-all">
+                                                            <Badge variant="default" className="text-[8px] h-4 py-0 font-black uppercase tracking-widest bg-primary text-primary-foreground">Schedule</Badge>
+                                                        </div>
+                                                    </div>
                                                 </div>
-                                                <div className="flex-1" />
-                                                <div className="opacity-0 group-hover:opacity-100 transition-all">
-                                                    <Badge variant="default" className="text-[8px] h-4 py-0 font-black uppercase tracking-widest bg-primary text-primary-foreground">Schedule</Badge>
+                                            ))}
+                                            {unscheduledTasks.length === 0 && (
+                                                <div className="flex flex-col items-center justify-center py-20 opacity-30">
+                                                    <Sparkles className="h-12 w-12 mb-4 text-primary" />
+                                                    <p className="text-[10px] font-black uppercase tracking-widest text-center">Your path is clear</p>
                                                 </div>
-                                            </div>
-                                        </div>
-                                    ))}
-                                    {unscheduledTasks.length === 0 && (
-                                        <div className="flex flex-col items-center justify-center py-20 opacity-30">
-                                            <Sparkles className="h-12 w-12 mb-4 text-primary" />
-                                            <p className="text-[10px] font-black uppercase tracking-widest text-center">Your path is clear</p>
-                                        </div>
+                                            )}
+                                        </>
+                                    ) : (
+                                        <EisenhowerMatrix
+                                            tasks={unscheduledTasks}
+                                            onScheduleTask={handleScheduleFromMatrix}
+                                        />
                                     )}
                                 </CardContent>
                             </Card>
+
+                            {/* Resizer Handle */}
+                            <div
+                                className={cn(
+                                    "hidden lg:flex w-2 hover:w-3 items-center justify-center cursor-col-resize group transition-all z-50",
+                                    isResizingSidebar && "w-3"
+                                )}
+                                onMouseDown={() => setIsResizingSidebar(true)}
+                            >
+                                <div className={cn(
+                                    "h-16 w-1 rounded-full bg-primary/10 group-hover:bg-primary/40 transition-colors",
+                                    isResizingSidebar && "bg-primary/60 scale-x-150 h-24"
+                                )} />
+                            </div>
 
                             {/* Center: Timeline Grid */}
                             <Card className="flex-1 relative overflow-hidden flex flex-col bg-background/40 backdrop-blur-xl border-primary/10 shadow-xl rounded-2xl min-h-[500px]">
@@ -261,7 +412,7 @@ function DayTimelineContent() {
 
                                 <div
                                     ref={scrollContainerRef}
-                                    className="flex-1 overflow-y-auto relative bg-[linear-gradient(to_bottom,transparent_79px,hsl(var(--primary)/.05)_79px)] bg-[size:100%_80px] custom-scrollbar"
+                                    className="flex-1 overflow-y-auto relative bg-[linear-gradient(to_bottom,transparent_79px,var(--border)_79px)] bg-[size:100%_80px] custom-scrollbar"
                                 >
                                     <div className="flex min-h-full">
                                         {/* Hours column */}

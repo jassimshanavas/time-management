@@ -120,62 +120,48 @@
   body {
     @apply bg-background text-foreground;
   }
+}
 
-
-  /* Custom scrollbar styling - Minimal & Sleek */
-  .scrollbar-thin::-webkit-scrollbar {
-    width: 6px !important;
-    height: 6px !important;
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
   }
 
-  .scrollbar-thin::-webkit-scrollbar-track,
-  .scrollbar-track-transparent::-webkit-scrollbar-track {
-    background: transparent !important;
+  100% {
+    transform: translateX(100%);
   }
+}
 
-  .scrollbar-thin::-webkit-scrollbar-thumb,
-  .scrollbar-thumb-primary\/20::-webkit-scrollbar-thumb {
-    background: hsl(var(--primary) / 0.2) !important;
-    border-radius: 10px !important;
-  }
+.animate-shimmer {
+  animation: shimmer 2s infinite linear;
+}
 
-  .scrollbar-thin:hover::-webkit-scrollbar-thumb,
-  .hover\:scrollbar-thumb-primary\/40:hover::-webkit-scrollbar-thumb {
-    background: hsl(var(--primary) / 0.4) !important;
-  }
+/* Global Scrollbar Overrides - Outside of layers for max specificity */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px !important;
+  height: 6px !important;
+}
 
-  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-    background: hsl(var(--primary) / 0.6) !important;
-  }
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent !important;
+}
 
-  .scrollbar-thin::-webkit-scrollbar-thumb:active {
-    background: hsl(var(--primary) / 0.8) !important;
-  }
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(155, 155, 155, 0.2) !important;
+  border-radius: 10px !important;
+  border: 1px solid rgba(255, 255, 255, 0.05) !important;
+}
 
-  /* Firefox scrollbar */
-  .scrollbar-thin,
-  .scrollbar-track-transparent,
-  .scrollbar-thumb-primary\/20 {
-    scrollbar-width: thin !important;
-    scrollbar-color: hsl(var(--primary) / 0.2) transparent !important;
-  }
+.custom-scrollbar:hover::-webkit-scrollbar-thumb {
+  background: rgba(155, 155, 155, 0.4) !important;
+}
 
-  .scrollbar-thin:hover,
-  .hover\:scrollbar-thumb-primary\/40:hover {
-    scrollbar-color: hsl(var(--primary) / 0.4) transparent !important;
-  }
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(155, 155, 155, 0.6) !important;
+}
 
-  @keyframes shimmer {
-    0% {
-      transform: translateX(-100%);
-    }
-
-    100% {
-      transform: translateX(100%);
-    }
-  }
-
-  .animate-shimmer {
-    animation: shimmer 2s infinite linear;
-  }
+/* Firefox */
+.custom-scrollbar {
+  scrollbar-width: thin !important;
+  scrollbar-color: rgba(155, 155, 155, 0.2) transparent !important;
 }
