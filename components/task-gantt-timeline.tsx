@@ -1,13 +1,13 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Task, Goal, TimeEntry } from '@/types';
-import { format, startOfDay, endOfDay, addHours, isSameDay, isBefore, isAfter, parseISO, differenceInMinutes } from 'date-fns';
-import { Clock, CheckCircle2, Circle, AlertCircle, ChevronDown, ChevronRight, Filter, Target, TrendingUp, Zap, History } from 'lucide-react';
+import { format, startOfDay, endOfDay, addHours, isSameDay, isBefore, isAfter, parseISO, differenceInMinutes, addMinutes } from 'date-fns';
+import { Clock, CheckCircle2, Circle, AlertCircle, ChevronDown, ChevronRight, Filter, Target, TrendingUp, Zap, History, ZoomIn, ZoomOut, RotateCcw, Minimize2, Maximize2, Camera } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -54,6 +54,13 @@ export function TaskGanttTimeline({ tasks, goals, timeEntries = [], selectedDate
     showStats: true,
     showFilters: false,
   });
+
+  const [zoomLevel, setZoomLevel] = useState(1);
+  const [isZoomMarqueeMode, setIsZoomMarqueeMode] = useState(false);
+  const [isSelecting, setIsSelecting] = useState(false);
+  const [selectionRange, setSelectionRange] = useState<{ start: number; end: number } | null>(null);
+  const [isModalExpanded, setIsModalExpanded] = useState(false);
+  const timelineRef = useRef<HTMLDivElement>(null);
 
   // Update current time every minute
   useEffect(() => {
@@ -226,7 +233,7 @@ export function TaskGanttTimeline({ tasks, goals, timeEntries = [], selectedDate
     if (!isSameDay(currentTime, selectedDate)) return null;
     const hours = currentTime.getHours();
     const minutes = currentTime.getMinutes();
-    return (hours * 80) + (minutes / 60 * 80);
+    return (hours * 60) + minutes;
   };
 
   const currentTimePosition = getCurrentTimePosition();
@@ -287,6 +294,33 @@ export function TaskGanttTimeline({ tasks, goals, timeEntries = [], selectedDate
 
   return (
     <div className="space-y-4">
+      <style dangerouslySetInnerHTML={{
+        __html: `
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 6px !important;
+          height: 6px !important;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: transparent !important;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: rgba(128, 128, 128, 0.2) !important;
+          border-radius: 10px !important;
+        }
+        .custom-scrollbar:hover::-webkit-scrollbar-thumb {
+          background: rgba(128, 128, 128, 0.4) !important;
+        }
+        .occupied-mesh {
+          background-image: repeating-linear-gradient(
+            -45deg,
+            rgba(245, 158, 11, 0.15) 0px,
+            rgba(245, 158, 11, 0.15) 1px,
+            transparent 1px,
+            transparent 5px
+          );
+          background-size: 8px 8px;
+        }
+      `}} />
       {/* Premium Header with View Switcher */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 rounded-3xl bg-background/40 backdrop-blur-xl border border-primary/10 shadow-2xl">
         <div className="flex items-center gap-4">
@@ -329,7 +363,67 @@ export function TaskGanttTimeline({ tasks, goals, timeEntries = [], selectedDate
           </Button>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
+          {/* Zoom Controls */}
+          <div className="flex items-center gap-1 bg-muted/30 p-1 rounded-xl border border-primary/5">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 rounded-lg"
+              onClick={() => setZoomLevel(prev => Math.max(1, prev - 1))}
+              disabled={zoomLevel <= 1}
+            >
+              <ZoomOut className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              className="px-2 h-8 text-[10px] font-black rounded-lg hover:bg-primary/10 transition-colors flex items-center gap-1.5"
+              onClick={() => {
+                setZoomLevel(1);
+                if (timelineRef.current) {
+                  timelineRef.current.scrollTo({ left: 0, behavior: 'smooth' });
+                }
+              }}
+              title="Reset View (1x)"
+            >
+              {zoomLevel.toPrecision(2)}x
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 rounded-lg"
+              onClick={() => setZoomLevel(prev => Math.min(20, prev + 1))}
+              disabled={zoomLevel >= 20}
+            >
+              <ZoomIn className="h-4 w-4" />
+            </Button>
+          </div>
+
+          <Button
+            variant={isZoomMarqueeMode ? "default" : "ghost"}
+            size="icon"
+            className={cn(
+              "h-9 w-9 rounded-xl transition-all",
+              isZoomMarqueeMode ? "bg-primary shadow-lg shadow-primary/20" : "bg-muted/30 border border-primary/5 hover:bg-primary/5"
+            )}
+            onClick={() => setIsZoomMarqueeMode(!isZoomMarqueeMode)}
+            title={isZoomMarqueeMode ? "Disable Zoom Tool" : "Zoom to Selection"}
+          >
+            <Search className="h-4 w-4" />
+          </Button>
+
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-9 w-9 rounded-xl bg-muted/30 border border-primary/5 hover:bg-primary/5"
+            onClick={() => setIsModalExpanded(!isModalExpanded)}
+            title={isModalExpanded ? "Compact View" : "Expanded View"}
+          >
+            {isModalExpanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+          </Button>
+
+          <div className="h-6 w-px bg-primary/10 hidden sm:block mx-1" />
+
           <div className="flex items-center gap-2 px-4 py-1.5 rounded-2xl bg-muted/20 border border-primary/5">
             <BarChart3 className="h-3 w-3 text-primary" />
             <Checkbox
@@ -456,7 +550,7 @@ export function TaskGanttTimeline({ tasks, goals, timeEntries = [], selectedDate
         <CardContent className="p-0">
           <div className="flex flex-col lg:flex-row">
             {/* Left sidebar - Hierarchy */}
-            <div className="w-full lg:w-80 bg-muted/20 border-r border-primary/5 flex-shrink-0 overflow-y-auto scrollbar-none scroll-smooth" style={{ maxHeight: '650px' }}>
+            <div className="w-full lg:w-80 bg-muted/20 border-r border-primary/5 flex-shrink-0 overflow-y-auto custom-scrollbar scroll-smooth" style={{ maxHeight: '650px' }}>
               <AnimatePresence mode="wait">
                 <motion.div
                   key={filters.viewMode}
@@ -622,223 +716,332 @@ export function TaskGanttTimeline({ tasks, goals, timeEntries = [], selectedDate
             </div>
 
             {/* Right side - Dynamic Timeline Matrix */}
-            <div className="flex-1 relative bg-background/5" style={{ minHeight: '650px', maxHeight: '650px' }}>
-              {/* Time Oracle Header */}
-              <div className="sticky top-0 z-40 bg-background/60 backdrop-blur-xl border-b border-primary/5 flex shadow-xl shadow-background/20">
-                {timeSlots.map((slot) => (
-                  <div
-                    key={slot.hour}
-                    className="flex-1 min-w-[80px] border-r border-primary/5 p-4 text-center group/slot"
-                  >
-                    <span className="text-[10px] font-black text-muted-foreground/60 group-hover/slot:text-primary transition-colors uppercase tracking-widest">{slot.label}</span>
-                  </div>
-                ))}
-              </div>
+            <div
+              ref={timelineRef}
+              className={cn(
+                "flex-1 relative bg-background/5 overflow-x-auto custom-scrollbar select-none scroll-smooth transition-all duration-300",
+                isZoomMarqueeMode ? "cursor-zoom-in bg-primary/5" : "cursor-grab active:cursor-grabbing"
+              )}
+              style={{ minHeight: '650px', maxHeight: '650px' }}
+              onMouseDown={(e) => {
+                if (isZoomMarqueeMode) {
+                  const rect = timelineRef.current!.getBoundingClientRect();
+                  const x = (e.clientX - rect.left + timelineRef.current!.scrollLeft);
+                  const hour = (x / (24 * 80 * zoomLevel)) * 24;
+                  setIsSelecting(true);
+                  setSelectionRange({ start: hour, end: hour });
 
-              {/* Matrix Core */}
-              <div className="relative overflow-auto scrollbar-none" style={{ height: 'calc(650px - 58px)' }}>
-                {/* Visual Grid */}
-                <div className="flex h-full absolute inset-0 pointer-events-none">
-                  {timeSlots.map((slot) => (
+                  const handleMouseMove = (moveEvent: MouseEvent) => {
+                    const moveX = (moveEvent.clientX - rect.left + timelineRef.current!.scrollLeft);
+                    const moveHour = Math.max(0, Math.min(24, (moveX / (24 * 80 * zoomLevel)) * 24));
+                    setSelectionRange(prev => prev ? { ...prev, end: moveHour } : null);
+                  };
+
+                  const handleMouseUp = () => {
+                    document.removeEventListener('mousemove', handleMouseMove);
+                    document.removeEventListener('mouseup', handleMouseUp);
+                    setIsSelecting(false);
+                    setSelectionRange(currentRange => {
+                      if (currentRange && Math.abs(currentRange.start - currentRange.end) > 0.05) {
+                        const startHour = Math.min(currentRange.start, currentRange.end);
+                        const endHour = Math.max(currentRange.start, currentRange.end);
+                        const durationHours = endHour - startHour;
+                        const targetZoom = Math.min(20, Math.max(1, 24 / durationHours));
+                        setZoomLevel(targetZoom);
+
+                        setTimeout(() => {
+                          if (timelineRef.current) {
+                            const containerWidth = timelineRef.current.clientWidth;
+                            const totalWidth = 24 * 80 * targetZoom;
+                            const centerHour = (startHour + endHour) / 2;
+                            const scrollTarget = (centerHour / 24) * totalWidth - containerWidth / 2;
+                            timelineRef.current.scrollTo({ left: scrollTarget, behavior: 'smooth' });
+                          }
+                        }, 50);
+                      }
+                      return null;
+                    });
+                    setIsZoomMarqueeMode(false);
+                  };
+                  document.addEventListener('mousemove', handleMouseMove);
+                  document.addEventListener('mouseup', handleMouseUp);
+                  return;
+                }
+
+                if (!timelineRef.current) return;
+                const scrollContainer = timelineRef.current;
+                const startX = e.pageX - scrollContainer.offsetLeft;
+                const scrollLeft = scrollContainer.scrollLeft;
+
+                const handleMouseMove = (moveEvent: MouseEvent) => {
+                  const x = moveEvent.pageX - scrollContainer.offsetLeft;
+                  const walk = (x - startX) * 1.5;
+                  scrollContainer.scrollLeft = scrollLeft - walk;
+                };
+
+                const handleMouseUp = () => {
+                  document.removeEventListener('mousemove', handleMouseMove);
+                  document.removeEventListener('mouseup', handleMouseUp);
+                };
+
+                document.addEventListener('mousemove', handleMouseMove);
+                document.addEventListener('mouseup', handleMouseUp);
+              }}
+            >
+              <div className="relative" style={{ width: `${zoomLevel * 100}%`, minWidth: '100%' }}>
+                {/* Selection Overlay */}
+                {isSelecting && selectionRange && (
+                  <div
+                    className="absolute inset-y-0 bg-primary/10 border-x border-primary z-50 pointer-events-none"
+                    style={{
+                      left: `${(Math.min(selectionRange.start, selectionRange.end) / 24) * 100}%`,
+                      width: `${(Math.abs(selectionRange.end - selectionRange.start) / 24) * 100}%`
+                    }}
+                  />
+                )}
+
+                {/* Time Oracle Header */}
+                <div className="sticky top-0 z-40 bg-background/60 backdrop-blur-xl border-b border-primary/5 flex shadow-xl shadow-background/20">
+                  {Array.from({ length: 25 }).map((_, hour) => (
                     <div
-                      key={slot.hour}
-                      className="flex-1 min-w-[80px] border-r border-primary/5 h-full opacity-20"
-                    />
+                      key={hour}
+                      className="flex-1 min-w-[30px] border-r border-primary/5 p-4 text-center group/slot relative"
+                      style={{ flex: `0 0 ${100 / 24}%` }}
+                    >
+                      <span className="text-[10px] font-black text-muted-foreground/60 group-hover/slot:text-primary transition-colors uppercase tracking-widest">
+                        {hour.toString().padStart(2, '0')}:00
+                      </span>
+                      {/* Dynamic Markers for Zoomed View */}
+                      {zoomLevel >= 3 && (
+                        <div className="absolute left-1/2 top-full w-px h-2 bg-primary/20" />
+                      )}
+                    </div>
                   ))}
                 </div>
 
-                {/* Current Momentum Beam (Glowing Vertical Halo) */}
-                {currentTimePosition !== null && (
-                  <div
-                    className="absolute top-0 bottom-0 z-40 pointer-events-none flex"
-                    style={{ left: `${(currentTimePosition / (24 * 80)) * 100}%` }}
-                  >
-                    {/* Momentum Shadow (Fading backwards) - Refined and thinned */}
-                    <div className="absolute top-0 bottom-0 right-[100%] w-[60px] bg-gradient-to-r from-transparent to-primary/10" />
-
-                    {/* The Kinetic Line */}
-                    <motion.div
-                      animate={{
-                        opacity: [0.4, 0.8, 0.4],
-                        boxShadow: [
-                          "0 0 8px rgba(255,255,255,0.2)",
-                          "0 0 15px rgba(255,255,255,0.4)",
-                          "0 0 8px rgba(255,255,255,0.2)"
-                        ]
-                      }}
-                      transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
-                      className="h-full w-[1px] bg-white/60 relative z-10"
-                    >
-                      {/* Neural Junction Point */}
-                      <div className="absolute top-0 -left-[2px] w-1.5 h-1.5 rounded-full bg-white shadow-[0_0_10px_#fff]" />
-
-                      {/* Floating ID Badge - Relocated to bottom and made subtle */}
-                      <div className="absolute bottom-4 -left-10 px-2.5 py-0.5 bg-background/80 backdrop-blur-md text-primary text-[7px] font-black uppercase tracking-[0.2em] rounded-full border border-primary/20 flex items-center gap-1.5 whitespace-nowrap opacity-60">
-                        <div className="w-1 h-1 rounded-full bg-primary animate-ping" />
-                        NOW
+                {/* Matrix Core */}
+                <div className="relative" style={{ height: 'calc(650px - 58px)' }}>
+                  {/* Visual Grid */}
+                  <div className="flex h-full absolute inset-0 pointer-events-none">
+                    {Array.from({ length: 24 }).map((_, hour) => (
+                      <div
+                        key={hour}
+                        className="flex-1 border-r border-primary/5 h-full opacity-20"
+                        style={{ flex: `0 0 ${100 / 24}%` }}
+                      >
+                        {zoomLevel >= 4 && (
+                          <div className="h-full w-px bg-primary/5 mx-auto" style={{ marginLeft: '50%' }} />
+                        )}
                       </div>
-                    </motion.div>
+                    ))}
                   </div>
-                )}
 
-                {/* Synchronized Vector Bars */}
-                <div className="relative">
-                  {groupedTasks.map((group, groupIndex) => {
-                    const isExpanded = expandedGoals.has(group.goalId || 'ungrouped') || filters.viewMode === 'tasks';
-                    if (!isExpanded) return null;
+                  {/* Current Momentum Beam (Glowing Vertical Halo) */}
+                  {currentTimePosition !== null && (
+                    <div
+                      className="absolute top-0 bottom-0 z-10 pointer-events-none flex"
+                      style={{ left: `${(currentTimePosition / (24 * 60)) * 100}%` }}
+                    >
+                      <div className="absolute top-0 bottom-0 right-[100%] w-[60px] bg-gradient-to-r from-transparent to-primary/10" />
+                      <motion.div
+                        animate={{
+                          opacity: [0.4, 0.8, 0.4],
+                          boxShadow: [
+                            "0 0 8px rgba(255,255,255,0.2)",
+                            "0 0 15px rgba(255,255,255,0.4)",
+                            "0 0 8px rgba(255,255,255,0.2)"
+                          ]
+                        }}
+                        transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
+                        className="h-full w-[1px] bg-white/60 relative z-10"
+                      >
+                        <div className="absolute top-0 -left-[2px] w-1.5 h-1.5 rounded-full bg-white shadow-[0_0_10px_#fff]" />
+                        <div className="absolute bottom-4 -left-10 px-2.5 py-0.5 bg-background/80 backdrop-blur-md text-primary text-[7px] font-black uppercase tracking-[0.2em] rounded-full border border-primary/20 flex items-center gap-1.5 whitespace-nowrap opacity-60">
+                          <div className="w-1 h-1 rounded-full bg-primary animate-ping" />
+                          NOW
+                        </div>
+                      </motion.div>
+                    </div>
+                  )}
 
-                    return (
-                      <div key={group.goalId || `group-${groupIndex}`} className="relative border-b border-primary/5" style={{ height: `${group.tasks.length * 60}px` }}>
-                        {group.tasks.map((task, taskIndex) => {
-                          return (
-                            <div key={task.id} className="absolute inset-x-0" style={{ top: `${taskIndex * 60 + 10}px`, height: '42px' }}>
-                              {/* Neural Window Indication (Full Lifespan Background) */}
-                              {(() => {
-                                const rangeStart = task.scheduledStart || task.createdAt;
-                                const rangeEnd = task.deadline || task.scheduledEnd || rangeStart;
+                  {/* Synchronized Vector Bars */}
+                  <div className="relative pt-4">
+                    {groupedTasks.map((group, groupIndex) => {
+                      const isExpanded = expandedGoals.has(group.goalId || 'ungrouped') || filters.viewMode === 'tasks';
+                      if (!isExpanded) return null;
 
-                                const rS = typeof rangeStart === 'string' ? parseISO(rangeStart) : rangeStart;
-                                const rE = typeof rangeEnd === 'string' ? parseISO(rangeEnd) : rangeEnd;
+                      return (
+                        <div key={group.goalId || `group-${groupIndex}`} className="relative border-b border-primary/5" style={{ height: `${group.tasks.length * 60}px` }}>
+                          {group.tasks.map((task, taskIndex) => {
+                            const lifecycleStart = task.createdAt;
+                            const lifecycleEnd = task.deadline || task.scheduledEnd || lifecycleStart;
 
-                                const viewStart = startOfDay(selectedDate);
-                                const viewEnd = endOfDay(selectedDate);
+                            const rS = typeof lifecycleStart === 'string' ? parseISO(lifecycleStart) : lifecycleStart;
+                            const rE = typeof lifecycleEnd === 'string' ? parseISO(lifecycleEnd) : lifecycleEnd;
+                            const viewStart = startOfDay(selectedDate);
+                            const viewEnd = endOfDay(selectedDate);
 
-                                // Clamp to today's view
-                                const displayStart = isBefore(rS, viewStart) ? viewStart : rS;
-                                const displayEnd = isAfter(rE, viewEnd) ? viewEnd : rE;
+                            const displayStart = isBefore(rS, viewStart) ? viewStart : rS;
+                            const displayEnd = isAfter(rE, viewEnd) ? viewEnd : rE;
 
-                                if (isAfter(displayStart, displayEnd)) return null;
+                            if (isAfter(displayStart, displayEnd)) return null;
 
-                                const startHours = displayStart.getHours() + displayStart.getMinutes() / 60;
-                                const endHours = displayEnd.getHours() + displayEnd.getMinutes() / 60;
+                            const startHours = displayStart.getHours() + displayStart.getMinutes() / 60;
+                            const endHours = displayEnd.getHours() + displayEnd.getMinutes() / 60;
+                            const left = (startHours / 24) * 100;
+                            const width = ((endHours - startHours) / 24) * 100;
 
-                                const left = (startHours / 24) * 100;
-                                const width = ((endHours - startHours) / 24) * 100;
+                            // Specific Scheduled Bar metrics
+                            let scheduledLeft = left;
+                            let scheduledWidth = width;
+                            let isCurrentlyScheduled = false;
 
-                                return (
-                                  <div
-                                    className="absolute inset-y-0 rounded-xl border overflow-hidden transition-all duration-700"
-                                    style={{
-                                      left: `${left}%`,
-                                      width: `${Math.max(width, 0.5)}%`,
-                                      backgroundColor: `color-mix(in srgb, ${group.goalColor}, transparent 98%)`,
-                                      borderColor: `color-mix(in srgb, ${group.goalColor}, transparent 80%)`,
-                                      backgroundImage: `repeating-linear-gradient(-45deg, color-mix(in srgb, ${group.goalColor}, transparent 85%) 0px, color-mix(in srgb, ${group.goalColor}, transparent 85%) 2px, transparent 2px, transparent 12px)`,
-                                      zIndex: 0,
-                                    }}
-                                  >
-                                    <div
-                                      className="absolute top-1 right-2 text-[6px] font-black uppercase tracking-widest opacity-40"
-                                      style={{ color: group.goalColor }}
-                                    >
-                                      {isSameDay(rE, selectedDate) ? 'Junction' : 'Stream'}
-                                    </div>
-                                  </div>
-                                );
-                              })()}
+                            if (task.scheduledStart) {
+                              const sStart = typeof task.scheduledStart === 'string' ? parseISO(task.scheduledStart) : task.scheduledStart;
+                              const sEnd = task.scheduledEnd
+                                ? (typeof task.scheduledEnd === 'string' ? parseISO(task.scheduledEnd) : task.scheduledEnd)
+                                : addMinutes(sStart, task.estimatedDuration || 60);
 
-                              {/* Active Task Bar (Specific Scheduled Plan) */}
-                              {task.scheduledStart && isSameDay(new Date(task.scheduledStart), selectedDate) && (
-                                <motion.div
-                                  initial={{ opacity: 0, scaleX: 0 }}
-                                  animate={{ opacity: 1, scaleX: 1 }}
-                                  className={cn(
-                                    "absolute rounded-xl p-2.5 transition-all hover:z-50 cursor-pointer overflow-hidden backdrop-blur-md group/bar border-l-4",
-                                    task.status === 'done' ? "bg-emerald-500/10 border-emerald-500/30" :
-                                      task.status === 'in-progress' ? "bg-primary/10 border-primary/30" : "bg-muted/10 border-muted-foreground/20"
-                                  )}
+                              if (isSameDay(sStart, selectedDate) || isSameDay(sEnd, selectedDate) || (isBefore(sStart, viewStart) && isAfter(sEnd, viewEnd))) {
+                                isCurrentlyScheduled = true;
+                                const dsStart = isBefore(sStart, viewStart) ? viewStart : sStart;
+                                const dsEnd = isAfter(sEnd, viewEnd) ? viewEnd : sEnd;
+
+                                const hsStart = dsStart.getHours() + dsStart.getMinutes() / 60;
+                                const hsEnd = dsEnd.getHours() + dsEnd.getMinutes() / 60;
+                                scheduledLeft = (hsStart / 24) * 100;
+                                scheduledWidth = ((hsEnd - hsStart) / 24) * 100;
+                              }
+                            }
+
+                            return (
+                              <div key={task.id} className="absolute inset-x-0" style={{ top: `${taskIndex * 60 + 10}px`, height: '42px' }}>
+                                {/* Neural Window Indication - The broader context shadow */}
+                                <div
+                                  className="absolute inset-y-0 rounded-xl border overflow-hidden transition-all duration-700 opacity-20 group-hover:opacity-40"
                                   style={{
-                                    left: `${((new Date(task.scheduledStart).getHours() + new Date(task.scheduledStart).getMinutes() / 60) / 24) * 100}%`,
-                                    width: `${((task.estimatedDuration || 60) / 60 / 24) * 100}%`,
-                                    height: '80%',
-                                    top: '10%',
-                                    borderColor: group.goalColor,
-                                    zIndex: 1,
+                                    left: `${left}%`,
+                                    width: `${Math.max(width, 0.5)}%`,
+                                    backgroundColor: `color-mix(in srgb, ${group.goalColor}, transparent 98%)`,
+                                    borderColor: `color-mix(in srgb, ${group.goalColor}, transparent 80%)`,
+                                    backgroundImage: `repeating-linear-gradient(-45deg, color-mix(in srgb, ${group.goalColor}, transparent 85%) 0px, color-mix(in srgb, ${group.goalColor}, transparent 85%) 2px, transparent 2px, transparent 12px)`,
+                                    zIndex: 0,
                                   }}
-                                  onClick={() => {
-                                    const params = new URLSearchParams();
-                                    params.set('fromView', 'timeline');
-                                    if (isProjectView && task.projectId && task.projectId !== 'undefined') {
-                                      params.set('fromProject', task.projectId);
-                                    }
-                                    params.set('fromTab', 'timeline');
-                                    params.set('date', format(selectedDate, 'yyyy-MM-dd'));
-                                    router.push(`/tasks/${task.id}?${params.toString()}`);
-                                  }}
-                                >
-                                  <div className="flex items-center gap-2 h-full">
-                                    <Clock className="w-2.5 h-2.5 text-muted-foreground/40 shrink-0" />
-                                    <span className="text-[8px] font-black uppercase tracking-tighter truncate opacity-60">
-                                      {task.title} (Plan)
-                                    </span>
-                                  </div>
-                                </motion.div>
-                              )}
+                                />
 
-                              {/* Tracked & Manual Logs (Actual Execution Pulse) */}
-                              {timeEntries.filter(e => e.taskId === task.id).map((entry) => {
-                                const start = new Date(entry.startTime);
-                                const end = entry.endTime ? new Date(entry.endTime) : (entry.isRunning ? currentTime : new Date(start.getTime() + (entry.duration || 30) * 60000));
-
-                                const viewStart = startOfDay(selectedDate);
-                                const viewEnd = endOfDay(selectedDate);
-                                if (isAfter(start, viewEnd) || isBefore(end, viewStart)) return null;
-
-                                const dS = isBefore(start, viewStart) ? viewStart : start;
-                                const dE = isAfter(end, viewEnd) ? viewEnd : end;
-
-                                const startHours = dS.getHours() + dS.getMinutes() / 60;
-                                const endHours = dE.getHours() + dE.getMinutes() / 60;
-
-                                const left = (startHours / 24) * 100;
-                                const width = ((endHours - startHours) / 24) * 100;
-
-                                return (
+                                {/* Active Task Bar - The specifically scheduled window */}
+                                {isCurrentlyScheduled && (
                                   <motion.div
-                                    key={entry.id}
-                                    initial={{ opacity: 0, y: 5, scale: 0.95 }}
-                                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                                    whileHover={{ scale: 1.02, zIndex: 60 }}
+                                    initial={{ opacity: 0, scaleX: 0 }}
+                                    animate={{ opacity: 1, scaleX: 1 }}
+                                    onClick={() => {
+                                      const params = new URLSearchParams();
+                                      params.set('fromView', 'timeline');
+                                      if (isProjectView && task.projectId && task.projectId !== 'undefined') {
+                                        params.set('fromProject', task.projectId);
+                                      }
+                                      params.set('fromTab', 'timeline');
+                                      params.set('date', format(selectedDate, 'yyyy-MM-dd'));
+                                      router.push(`/tasks/${task.id}?${params.toString()}`);
+                                    }}
                                     className={cn(
-                                      "absolute h-[85%] top-[7.5%] rounded-lg border flex items-center px-2 gap-1.5 overflow-hidden transition-all backdrop-blur-md shadow-[0_8px_16px_-6px_rgba(0,0,0,0.2)]",
-                                      entry.isRunning
-                                        ? "ring-2 ring-orange-500/40 shadow-orange-500/20"
-                                        : ""
+                                      "absolute rounded-xl p-2.5 transition-all hover:z-50 cursor-pointer overflow-hidden backdrop-blur-md group/bar border-l-4",
+                                      task.status === 'done' ? "bg-emerald-500/10 border-emerald-500/30 shadow-[0_0_15px_rgba(16,185,129,0.1)]" :
+                                        task.status === 'in-progress' ? "bg-primary/10 border-primary/30 shadow-[0_0_15px_rgba(59,130,246,0.1)]" : "bg-muted/10 border-muted-foreground/20"
                                     )}
                                     style={{
-                                      left: `${left}%`,
-                                      width: `${Math.max(width, 1.5)}%`,
-                                      zIndex: 10,
-                                      backgroundColor: entry.isRunning
-                                        ? 'rgba(249, 115, 22, 0.7)'
-                                        : `color-mix(in srgb, ${group.goalColor}, transparent 30%)`,
-                                      borderColor: entry.isRunning
-                                        ? 'rgba(251, 146, 60, 0.5)'
-                                        : `color-mix(in srgb, ${group.goalColor}, transparent 60%)`,
-                                      color: entry.isRunning ? '#fff' : 'white', // Ensure text is readable on dark glass
+                                      left: `${scheduledLeft}%`,
+                                      width: `${Math.max(scheduledWidth, 0.5)}%`,
+                                      zIndex: 1,
                                     }}
-                                    title={`${entry.category}: ${entry.description || 'No description'}`}
                                   >
-                                    {/* Top Edge Highlight for 3D Crystal Effect */}
-                                    <div className="absolute top-0 left-0 right-0 h-[1px] bg-white/30 z-20" />
-
-                                    <Zap className={cn("w-2.5 h-2.5 shrink-0 z-10", entry.isRunning && "animate-pulse text-white")} />
-                                    <span className="text-[7px] font-black uppercase tracking-widest truncate z-10 drop-shadow-sm">
-                                      {entry.category || 'Manual Log'}
-                                    </span>
-
-                                    {entry.isRunning && (
-                                      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer z-0" />
-                                    )}
+                                    <div className="flex items-center justify-between h-full">
+                                      <div className="flex flex-col min-w-0">
+                                        <span className={cn(
+                                          "text-[10px] font-black truncate tracking-tight uppercase group-hover/bar:text-primary transition-colors",
+                                          task.status === 'done' && "line-through opacity-40"
+                                        )}>
+                                          {task.title}
+                                        </span>
+                                        {zoomLevel >= 2 && task.scheduledStart && (
+                                          <div className="flex items-center gap-1.5 opacity-40">
+                                            <span className="text-[7px] font-black">
+                                              {format(typeof task.scheduledStart === 'string' ? parseISO(task.scheduledStart) : task.scheduledStart, 'HH:mm')}
+                                              {task.scheduledEnd && ` - ${format(typeof task.scheduledEnd === 'string' ? parseISO(task.scheduledEnd) : task.scheduledEnd, 'HH:mm')}`}
+                                            </span>
+                                            {task.priority === 'high' && <Zap className="h-2 w-2 text-rose-500 fill-current" />}
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
                                   </motion.div>
-                                );
-                              })}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    );
-                  })}
+                                )}
+
+                                {/* Tracked & Manual Logs (Actual Execution Pulse) */}
+                                {timeEntries.filter(e => e.taskId === task.id).map((entry) => {
+                                  const start = new Date(entry.startTime);
+                                  const end = entry.endTime ? new Date(entry.endTime) : (entry.isRunning ? currentTime : new Date(start.getTime() + (entry.duration || 30) * 60000));
+
+                                  const viewStart = startOfDay(selectedDate);
+                                  const viewEnd = endOfDay(selectedDate);
+                                  if (isAfter(start, viewEnd) || isBefore(end, viewStart)) return null;
+
+                                  const dS = isBefore(start, viewStart) ? viewStart : start;
+                                  const dE = isAfter(end, viewEnd) ? viewEnd : end;
+
+                                  const startHours = dS.getHours() + dS.getMinutes() / 60;
+                                  const endHours = dE.getHours() + dE.getMinutes() / 60;
+
+                                  const left = (startHours / 24) * 100;
+                                  const width = ((endHours - startHours) / 24) * 100;
+
+                                  return (
+                                    <motion.div
+                                      key={entry.id}
+                                      initial={{ opacity: 0, y: 5, scale: 0.95 }}
+                                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                                      whileHover={{ scale: 1.02, zIndex: 60 }}
+                                      className={cn(
+                                        "absolute h-[85%] top-[7.5%] rounded-lg border flex items-center px-2 gap-1.5 overflow-hidden transition-all backdrop-blur-md shadow-[0_8px_16px_-6px_rgba(0,0,0,0.2)]",
+                                        entry.isRunning
+                                          ? "ring-2 ring-orange-500/40 shadow-orange-500/20"
+                                          : ""
+                                      )}
+                                      style={{
+                                        left: `${left}%`,
+                                        width: `${Math.max(width, 1.5)}%`,
+                                        zIndex: 10,
+                                        backgroundColor: entry.isRunning
+                                          ? 'rgba(249, 115, 22, 0.7)'
+                                          : `color-mix(in srgb, ${group.goalColor}, transparent 30%)`,
+                                        borderColor: entry.isRunning
+                                          ? 'rgba(251, 146, 60, 0.5)'
+                                          : `color-mix(in srgb, ${group.goalColor}, transparent 60%)`,
+                                        color: entry.isRunning ? '#fff' : 'white', // Ensure text is readable on dark glass
+                                      }}
+                                      title={`${entry.category}: ${entry.description || 'No description'}`}
+                                    >
+                                      {/* Top Edge Highlight for 3D Crystal Effect */}
+                                      <div className="absolute top-0 left-0 right-0 h-[1px] bg-white/30 z-20" />
+
+                                      <Zap className={cn("w-2.5 h-2.5 shrink-0 z-10", entry.isRunning && "animate-pulse text-white")} />
+                                      <span className="text-[7px] font-black uppercase tracking-widest truncate z-10 drop-shadow-sm">
+                                        {entry.category || 'Manual Log'}
+                                      </span>
+
+                                      {entry.isRunning && (
+                                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer z-0" />
+                                      )}
+                                    </motion.div>
+                                  );
+                                })}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             </div>
