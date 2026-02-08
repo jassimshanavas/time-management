@@ -21,12 +21,14 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { motion, AnimatePresence } from 'framer-motion';
 import { LayoutGrid, List as ListIcon, Search, Settings2, BarChart3 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { TimelineCalendarSelector } from '@/components/timeline-calendar-selector';
 
 interface TaskGanttTimelineProps {
   tasks: Task[];
   goals: Goal[];
   timeEntries?: TimeEntry[];
   selectedDate: Date;
+  onDateChange?: (date: Date) => void;
   isProjectView?: boolean;
 }
 
@@ -44,7 +46,7 @@ const ROW_HEADER_HEIGHT = 80;
 const ROW_HEADER_EXPANDED_HEIGHT = 180;
 const TASK_SUB_ROW_HEIGHT = 60;
 
-export function TaskGanttTimeline({ tasks, goals, timeEntries = [], selectedDate, isProjectView = false }: TaskGanttTimelineProps) {
+export function TaskGanttTimeline({ tasks, goals, timeEntries = [], selectedDate, onDateChange, isProjectView = false }: TaskGanttTimelineProps) {
   const router = useRouter();
   const [currentTime, setCurrentTime] = useState(new Date());
   const [expandedGoals, setExpandedGoals] = useState<Set<string>>(new Set(['ungrouped', ...goals.map(g => g.id)]));
@@ -366,6 +368,14 @@ export function TaskGanttTimeline({ tasks, goals, timeEntries = [], selectedDate
             Filters {filters.showFilters ? 'Active' : ''}
           </Button>
         </div>
+
+        {/* Calendar Date Selector */}
+        <TimelineCalendarSelector
+          selectedDate={selectedDate}
+          onDateChange={onDateChange || (() => { })}
+          tasks={tasks}
+          goals={goals}
+        />
 
         <div className="flex items-center gap-3">
           {/* Zoom Controls */}

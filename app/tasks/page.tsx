@@ -770,6 +770,7 @@ function TasksPageContent() {
                     return String(e.projectId) === String(selectedProjectId) || isTaskInProject;
                   })}
                   selectedDate={selectedDate}
+                  onDateChange={setSelectedDate}
                 />
               </div>
             ) : viewMode === 'list' ? (

@@ -646,6 +646,7 @@ export default function ProjectPage() {
                                                                 goals={timelineGoals}
                                                                 timeEntries={projectTimeEntries}
                                                                 selectedDate={selectedDate}
+                                                                onDateChange={setSelectedDate}
                                                                 isProjectView={true}
                                                             />
                                                         );
