@@ -40,6 +40,10 @@ interface GroupedTasks {
   progress: number;
 }
 
+const ROW_HEADER_HEIGHT = 80;
+const ROW_HEADER_EXPANDED_HEIGHT = 180;
+const TASK_SUB_ROW_HEIGHT = 60;
+
 export function TaskGanttTimeline({ tasks, goals, timeEntries = [], selectedDate, isProjectView = false }: TaskGanttTimelineProps) {
   const router = useRouter();
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -397,6 +401,21 @@ export function TaskGanttTimeline({ tasks, goals, timeEntries = [], selectedDate
             >
               <ZoomIn className="h-4 w-4" />
             </Button>
+            <div className="w-px h-4 bg-primary/10 mx-0.5" />
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 rounded-lg text-muted-foreground hover:text-white hover:bg-white/10"
+              onClick={() => {
+                setZoomLevel(1);
+                if (timelineRef.current) {
+                  timelineRef.current.scrollTo({ left: 0, behavior: 'smooth' });
+                }
+              }}
+              title="Reset View (1x)"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+            </Button>
           </div>
 
           <Button
@@ -410,16 +429,6 @@ export function TaskGanttTimeline({ tasks, goals, timeEntries = [], selectedDate
             title={isZoomMarqueeMode ? "Disable Zoom Tool" : "Zoom to Selection"}
           >
             <Search className="h-4 w-4" />
-          </Button>
-
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-9 w-9 rounded-xl bg-muted/30 border border-primary/5 hover:bg-primary/5"
-            onClick={() => setIsModalExpanded(!isModalExpanded)}
-            title={isModalExpanded ? "Compact View" : "Expanded View"}
-          >
-            {isModalExpanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
           </Button>
 
           <div className="h-6 w-px bg-primary/10 hidden sm:block mx-1" />
@@ -548,65 +557,68 @@ export function TaskGanttTimeline({ tasks, goals, timeEntries = [], selectedDate
       {/* Gantt Timeline */}
       <Card className="overflow-hidden bg-background/40 backdrop-blur-xl border-primary/10 rounded-[2rem] shadow-2xl">
         <CardContent className="p-0">
-          <div className="flex flex-col lg:flex-row">
-            {/* Left sidebar - Hierarchy */}
-            <div className="w-full lg:w-80 bg-muted/20 border-r border-primary/5 flex-shrink-0 overflow-y-auto custom-scrollbar scroll-smooth" style={{ maxHeight: '650px' }}>
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={filters.viewMode}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: 20 }}
-                  transition={{ duration: 0.3, ease: "easeOut" }}
-                >
-                  {groupedTasks.map((group) => {
-                    const isExpanded = expandedGoals.has(group.goalId || 'ungrouped') || filters.viewMode === 'tasks';
-                    const groupId = group.goalId || 'ungrouped';
+          <div className="flex flex-col lg:flex-row overflow-y-auto custom-scrollbar scroll-smooth" style={{ height: '650px' }}>
+            {/* Unified Vertical Scroll Container */}
+            <div className="flex-1 flex flex-col lg:flex-row relative">
+              {/* Left sidebar - Hierarchy */}
+              <div className="w-full lg:w-80 bg-muted/20 border-r border-primary/5 flex-shrink-0 z-30">
+                <AnimatePresence mode="wait">
+                  <motion.div
+                    key={filters.viewMode}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: 20 }}
+                    transition={{ duration: 0.3, ease: "easeOut" }}
+                  >
+                    {/* Header Spacer to align with timeline header */}
+                    <div className="sticky top-0 h-[58px] border-b border-primary/5 bg-muted/20 z-40" />
 
-                    return (
-                      <div key={groupId} className="border-b border-primary/5 group/row">
-                        {/* Row Header */}
-                        <div
-                          className={cn(
-                            "p-5 cursor-pointer transition-all duration-300 hover:bg-primary/5",
-                            filters.viewMode === 'tasks' && "py-4"
-                          )}
-                          onClick={() => filters.viewMode === 'goals' && toggleGoal(groupId)}
-                        >
-                          <div className="flex items-start gap-4">
-                            {filters.viewMode === 'goals' && (
-                              <div className="h-6 w-6 mt-1 flex items-center justify-center rounded-lg bg-primary/5 text-primary group-hover:scale-110 transition-transform">
-                                {isExpanded ? (
-                                  <ChevronDown className="h-4 w-4" />
-                                ) : (
-                                  <ChevronRight className="h-4 w-4" />
-                                )}
-                              </div>
+                    {groupedTasks.map((group) => {
+                      const isExpanded = expandedGoals.has(group.goalId || 'ungrouped') || filters.viewMode === 'tasks';
+                      const groupId = group.goalId || 'ungrouped';
+
+                      return (
+                        <div key={groupId} className="border-b border-primary/5 group/row">
+                          {/* Row Header */}
+                          <div
+                            className={cn(
+                              "px-5 cursor-pointer transition-all duration-300 hover:bg-primary/5 flex flex-col justify-center",
+                              filters.viewMode === 'tasks' ? "h-[80px]" : (isExpanded ? "h-[180px]" : "h-[80px]")
                             )}
+                            onClick={() => filters.viewMode === 'goals' && toggleGoal(groupId)}
+                          >
+                            <div className="flex items-start gap-4">
+                              {filters.viewMode === 'goals' && (
+                                <div className="h-6 w-6 mt-1 flex items-center justify-center rounded-lg bg-primary/5 text-primary group-hover:scale-110 transition-transform">
+                                  {isExpanded ? (
+                                    <ChevronDown className="h-4 w-4" />
+                                  ) : (
+                                    <ChevronRight className="h-4 w-4" />
+                                  )}
+                                </div>
+                              )}
 
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-3 mb-2">
-                                <div
-                                  className="w-2.5 h-2.5 rounded-full ring-4 ring-offset-2 ring-offset-background"
-                                  style={{ backgroundColor: group.goalColor, ringColor: `${group.goalColor}30` } as any}
-                                />
-                                <h3 className={cn(
-                                  "font-bold truncate tracking-tight",
-                                  filters.viewMode === 'tasks' ? "text-sm" : "text-base"
-                                )}>
-                                  {group.goalTitle}
-                                </h3>
-                                {filters.viewMode === 'goals' && (
-                                  <Badge className="bg-primary/10 text-primary border-none text-[10px] h-5 rounded-md px-2">
-                                    {group.tasks.length}
-                                  </Badge>
-                                )}
-                              </div>
-
-                              {filters.showStats && (
-                                <div className="space-y-2.5">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-3 mb-2">
+                                  <div
+                                    className="w-2.5 h-2.5 rounded-full ring-4 ring-offset-2 ring-offset-background"
+                                    style={{ backgroundColor: group.goalColor, ringColor: `${group.goalColor}30` } as any}
+                                  />
+                                  <h3 className={cn(
+                                    "font-bold truncate tracking-tight mb-1",
+                                    filters.viewMode === 'tasks' ? "text-sm" : "text-base"
+                                  )}>
+                                    {group.goalTitle}
+                                  </h3>
                                   {filters.viewMode === 'goals' && (
-                                    <div className="space-y-3">
+                                    <Badge className="bg-primary/10 text-primary border-none text-[10px] h-5 rounded-md px-2">
+                                      {group.tasks.length}
+                                    </Badge>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-3">
+                                  {isExpanded && filters.viewMode === 'goals' && (
+                                    <div className="space-y-3 w-full">
                                       <div className="flex flex-col gap-1.5">
                                         <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">
                                           <span className="flex items-center gap-1">
@@ -636,6 +648,22 @@ export function TaskGanttTimeline({ tasks, goals, timeEntries = [], selectedDate
                                       </div>
                                     </div>
                                   )}
+                                  {!isExpanded && filters.viewMode === 'goals' && (
+                                    <div className="flex items-center gap-2">
+                                      <div className="flex -space-x-2">
+                                        {group.tasks.slice(0, 3).map((t, i) => (
+                                          <div
+                                            key={t.id}
+                                            className="w-4 h-4 rounded-full border border-background shadow-sm"
+                                            style={{ backgroundColor: group.goalColor, opacity: 1 - (i * 0.2) }}
+                                          />
+                                        ))}
+                                      </div>
+                                      <span className="text-[10px] font-bold opacity-40 uppercase tracking-tighter">
+                                        {formatDuration(group.totalDuration)}
+                                      </span>
+                                    </div>
+                                  )}
                                   {filters.viewMode === 'tasks' && group.tasks[0] && (
                                     <div className="flex items-center gap-2">
                                       <Badge variant="outline" className={cn(
@@ -654,393 +682,421 @@ export function TaskGanttTimeline({ tasks, goals, timeEntries = [], selectedDate
                                     </div>
                                   )}
                                 </div>
-                              )}
+                              </div>
                             </div>
                           </div>
-                        </div>
 
-                        {/* Tasks under goal (Only in Goals View) */}
-                        {isExpanded && filters.viewMode === 'goals' && (
-                          <div className="bg-primary/5 backdrop-blur-sm px-2 pb-2">
-                            {group.tasks.map((task) => (
-                              <div
-                                key={task.id}
-                                className="px-5 py-3 rounded-2xl hover:bg-background/80 transition-all duration-300 cursor-pointer mb-1 group/item"
-                                onClick={() => {
-                                  const params = new URLSearchParams();
-                                  params.set('fromView', 'timeline');
-                                  if (isProjectView && task.projectId && task.projectId !== 'undefined') {
-                                    params.set('fromProject', task.projectId);
-                                  }
-                                  params.set('fromTab', 'tasks');
-                                  params.set('date', format(selectedDate, 'yyyy-MM-dd'));
-                                  router.push(`/tasks/${task.id}?${params.toString()}`);
-                                }}
-                              >
-                                <div className="flex items-center gap-4 ml-6">
-                                  <div className={cn(
-                                    "h-2 w-2 rounded-full",
-                                    task.status === 'done' ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" :
-                                      task.status === 'in-progress' ? "bg-blue-500 animate-pulse" : "bg-muted-foreground/40"
-                                  )} />
-                                  <div className="flex-1 min-w-0">
-                                    <p className="text-xs font-bold truncate group-hover/item:text-primary transition-colors tracking-tight">{task.title}</p>
-                                    <div className="flex items-center gap-2 mt-0.5 opacity-60">
-                                      <span className="text-[10px] font-black uppercase tracking-tighter">
-                                        {(() => {
-                                          const taskDate = task.scheduledStart || task.deadline;
-                                          if (!taskDate) return 'Sync Undefined';
-                                          const date = typeof taskDate === 'string' ? parseISO(taskDate) : taskDate;
-                                          return format(date, 'HH:mm');
-                                        })()}
-                                      </span>
+                          {/* Tasks under goal (Only in Goals View) */}
+                          {isExpanded && filters.viewMode === 'goals' && (
+                            <div className="bg-primary/5 backdrop-blur-sm border-t border-primary/5">
+                              {group.tasks.map((task) => (
+                                <div
+                                  key={task.id}
+                                  className="px-5 h-[60px] flex items-center hover:bg-background/80 transition-all duration-300 cursor-pointer border-b border-white/5 group/item"
+                                  onClick={() => {
+                                    const params = new URLSearchParams();
+                                    params.set('fromView', 'timeline');
+                                    if (isProjectView && task.projectId && task.projectId !== 'undefined') {
+                                      params.set('fromProject', task.projectId);
+                                    }
+                                    params.set('fromTab', 'tasks');
+                                    params.set('date', format(selectedDate, 'yyyy-MM-dd'));
+                                    router.push(`/tasks/${task.id}?${params.toString()}`);
+                                  }}
+                                >
+                                  <div className="flex items-center gap-4 ml-6">
+                                    <div className={cn(
+                                      "h-2 w-2 rounded-full",
+                                      task.status === 'done' ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" :
+                                        task.status === 'in-progress' ? "bg-blue-500 animate-pulse" : "bg-muted-foreground/40"
+                                    )} />
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-xs font-bold truncate group-hover/item:text-primary transition-colors tracking-tight">{task.title}</p>
+                                      <div className="flex items-center gap-2 mt-0.5 opacity-60">
+                                        <span className="text-[10px] font-black uppercase tracking-tighter">
+                                          {(() => {
+                                            const taskDate = task.scheduledStart || task.deadline;
+                                            if (!taskDate) return 'Sync Undefined';
+                                            const date = typeof taskDate === 'string' ? parseISO(taskDate) : taskDate;
+                                            return format(date, 'HH:mm');
+                                          })()}
+                                        </span>
+                                      </div>
                                     </div>
                                   </div>
                                 </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </motion.div>
-              </AnimatePresence>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </motion.div>
+                </AnimatePresence>
 
-              {groupedTasks.length === 0 && (
-                <div className="p-20 text-center opacity-20 grayscale">
-                  <BarChart3 className="w-16 h-16 mx-auto mb-4" />
-                  <p className="font-black text-[10px] uppercase tracking-widest italic">Zero Vectors Found</p>
-                </div>
-              )}
-            </div>
+                {groupedTasks.length === 0 && (
+                  <div className="p-20 text-center opacity-20 grayscale">
+                    <BarChart3 className="w-16 h-16 mx-auto mb-4" />
+                    <p className="font-black text-[10px] uppercase tracking-widest italic">Zero Vectors Found</p>
+                  </div>
+                )}
+              </div>
 
-            {/* Right side - Dynamic Timeline Matrix */}
-            <div
-              ref={timelineRef}
-              className={cn(
-                "flex-1 relative bg-background/5 overflow-x-auto custom-scrollbar select-none scroll-smooth transition-all duration-300",
-                isZoomMarqueeMode ? "cursor-zoom-in bg-primary/5" : "cursor-grab active:cursor-grabbing"
-              )}
-              style={{ minHeight: '650px', maxHeight: '650px' }}
-              onMouseDown={(e) => {
-                if (isZoomMarqueeMode) {
-                  const rect = timelineRef.current!.getBoundingClientRect();
-                  const x = (e.clientX - rect.left + timelineRef.current!.scrollLeft);
-                  const hour = (x / (24 * 80 * zoomLevel)) * 24;
-                  setIsSelecting(true);
-                  setSelectionRange({ start: hour, end: hour });
+              {/* Right side - Dynamic Timeline Matrix */}
+              <div
+                ref={timelineRef}
+                className={cn(
+                  "flex-1 relative bg-background/5 overflow-x-auto custom-scrollbar select-none scroll-smooth transition-all duration-300",
+                  isZoomMarqueeMode ? "cursor-zoom-in bg-primary/5" : "cursor-grab active:cursor-grabbing"
+                )}
+                style={{
+                  height: `${58 + groupedTasks.reduce((total, group) => {
+                    const isExpanded = expandedGoals.has(group.goalId || 'ungrouped') || filters.viewMode === 'tasks';
+                    if (!isExpanded && filters.viewMode === 'goals') return total + ROW_HEADER_HEIGHT;
+                    const headerHeight = filters.viewMode === 'tasks' ? ROW_HEADER_HEIGHT : ROW_HEADER_EXPANDED_HEIGHT;
+                    const tasksHeight = filters.viewMode === 'goals' ? (group.tasks.length * TASK_SUB_ROW_HEIGHT) : 0;
+                    return total + headerHeight + tasksHeight;
+                  }, 0)}px`
+                }}
+                onMouseDown={(e) => {
+                  if (isZoomMarqueeMode) {
+                    const rect = timelineRef.current!.getBoundingClientRect();
+                    const x = (e.clientX - rect.left + timelineRef.current!.scrollLeft);
+                    const hour = (x / (24 * 80 * zoomLevel)) * 24;
+                    setIsSelecting(true);
+                    setSelectionRange({ start: hour, end: hour });
+
+                    const handleMouseMove = (moveEvent: MouseEvent) => {
+                      const moveX = (moveEvent.clientX - rect.left + timelineRef.current!.scrollLeft);
+                      const moveHour = Math.max(0, Math.min(24, (moveX / (24 * 80 * zoomLevel)) * 24));
+                      setSelectionRange(prev => prev ? { ...prev, end: moveHour } : null);
+                    };
+
+                    const handleMouseUp = () => {
+                      document.removeEventListener('mousemove', handleMouseMove);
+                      document.removeEventListener('mouseup', handleMouseUp);
+                      setIsSelecting(false);
+                      setSelectionRange(currentRange => {
+                        if (currentRange && Math.abs(currentRange.start - currentRange.end) > 0.05) {
+                          const startHour = Math.min(currentRange.start, currentRange.end);
+                          const endHour = Math.max(currentRange.start, currentRange.end);
+                          const durationHours = endHour - startHour;
+                          const targetZoom = Math.min(20, Math.max(1, 24 / durationHours));
+                          setZoomLevel(targetZoom);
+
+                          setTimeout(() => {
+                            if (timelineRef.current) {
+                              const containerWidth = timelineRef.current.clientWidth;
+                              const totalWidth = 24 * 80 * targetZoom;
+                              const centerHour = (startHour + endHour) / 2;
+                              const scrollTarget = (centerHour / 24) * totalWidth - containerWidth / 2;
+                              timelineRef.current.scrollTo({ left: scrollTarget, behavior: 'smooth' });
+                            }
+                          }, 50);
+                        }
+                        return null;
+                      });
+                      setIsZoomMarqueeMode(false);
+                    };
+                    document.addEventListener('mousemove', handleMouseMove);
+                    document.addEventListener('mouseup', handleMouseUp);
+                    return;
+                  }
+
+                  if (!timelineRef.current) return;
+                  const scrollContainer = timelineRef.current;
+                  const startX = e.pageX - scrollContainer.offsetLeft;
+                  const scrollLeft = scrollContainer.scrollLeft;
 
                   const handleMouseMove = (moveEvent: MouseEvent) => {
-                    const moveX = (moveEvent.clientX - rect.left + timelineRef.current!.scrollLeft);
-                    const moveHour = Math.max(0, Math.min(24, (moveX / (24 * 80 * zoomLevel)) * 24));
-                    setSelectionRange(prev => prev ? { ...prev, end: moveHour } : null);
+                    const x = moveEvent.pageX - scrollContainer.offsetLeft;
+                    const walk = (x - startX) * 1.5;
+                    scrollContainer.scrollLeft = scrollLeft - walk;
                   };
 
                   const handleMouseUp = () => {
                     document.removeEventListener('mousemove', handleMouseMove);
                     document.removeEventListener('mouseup', handleMouseUp);
-                    setIsSelecting(false);
-                    setSelectionRange(currentRange => {
-                      if (currentRange && Math.abs(currentRange.start - currentRange.end) > 0.05) {
-                        const startHour = Math.min(currentRange.start, currentRange.end);
-                        const endHour = Math.max(currentRange.start, currentRange.end);
-                        const durationHours = endHour - startHour;
-                        const targetZoom = Math.min(20, Math.max(1, 24 / durationHours));
-                        setZoomLevel(targetZoom);
-
-                        setTimeout(() => {
-                          if (timelineRef.current) {
-                            const containerWidth = timelineRef.current.clientWidth;
-                            const totalWidth = 24 * 80 * targetZoom;
-                            const centerHour = (startHour + endHour) / 2;
-                            const scrollTarget = (centerHour / 24) * totalWidth - containerWidth / 2;
-                            timelineRef.current.scrollTo({ left: scrollTarget, behavior: 'smooth' });
-                          }
-                        }, 50);
-                      }
-                      return null;
-                    });
-                    setIsZoomMarqueeMode(false);
                   };
+
                   document.addEventListener('mousemove', handleMouseMove);
                   document.addEventListener('mouseup', handleMouseUp);
-                  return;
-                }
-
-                if (!timelineRef.current) return;
-                const scrollContainer = timelineRef.current;
-                const startX = e.pageX - scrollContainer.offsetLeft;
-                const scrollLeft = scrollContainer.scrollLeft;
-
-                const handleMouseMove = (moveEvent: MouseEvent) => {
-                  const x = moveEvent.pageX - scrollContainer.offsetLeft;
-                  const walk = (x - startX) * 1.5;
-                  scrollContainer.scrollLeft = scrollLeft - walk;
-                };
-
-                const handleMouseUp = () => {
-                  document.removeEventListener('mousemove', handleMouseMove);
-                  document.removeEventListener('mouseup', handleMouseUp);
-                };
-
-                document.addEventListener('mousemove', handleMouseMove);
-                document.addEventListener('mouseup', handleMouseUp);
-              }}
-            >
-              <div className="relative" style={{ width: `${zoomLevel * 100}%`, minWidth: '100%' }}>
-                {/* Selection Overlay */}
-                {isSelecting && selectionRange && (
-                  <div
-                    className="absolute inset-y-0 bg-primary/10 border-x border-primary z-50 pointer-events-none"
-                    style={{
-                      left: `${(Math.min(selectionRange.start, selectionRange.end) / 24) * 100}%`,
-                      width: `${(Math.abs(selectionRange.end - selectionRange.start) / 24) * 100}%`
-                    }}
-                  />
-                )}
-
-                {/* Time Oracle Header */}
-                <div className="sticky top-0 z-40 bg-background/60 backdrop-blur-xl border-b border-primary/5 flex shadow-xl shadow-background/20">
-                  {Array.from({ length: 25 }).map((_, hour) => (
+                }}
+              >
+                <div className="relative" style={{ width: `${zoomLevel * 100}%`, minWidth: '100%' }}>
+                  {/* Selection Overlay */}
+                  {isSelecting && selectionRange && (
                     <div
-                      key={hour}
-                      className="flex-1 min-w-[30px] border-r border-primary/5 p-4 text-center group/slot relative"
-                      style={{ flex: `0 0 ${100 / 24}%` }}
-                    >
-                      <span className="text-[10px] font-black text-muted-foreground/60 group-hover/slot:text-primary transition-colors uppercase tracking-widest">
-                        {hour.toString().padStart(2, '0')}:00
-                      </span>
-                      {/* Dynamic Markers for Zoomed View */}
-                      {zoomLevel >= 3 && (
-                        <div className="absolute left-1/2 top-full w-px h-2 bg-primary/20" />
-                      )}
-                    </div>
-                  ))}
-                </div>
+                      className="absolute inset-y-0 bg-primary/10 border-x border-primary z-50 pointer-events-none"
+                      style={{
+                        left: `${(Math.min(selectionRange.start, selectionRange.end) / 24) * 100}%`,
+                        width: `${(Math.abs(selectionRange.end - selectionRange.start) / 24) * 100}%`
+                      }}
+                    />
+                  )}
 
-                {/* Matrix Core */}
-                <div className="relative" style={{ height: 'calc(650px - 58px)' }}>
-                  {/* Visual Grid */}
-                  <div className="flex h-full absolute inset-0 pointer-events-none">
-                    {Array.from({ length: 24 }).map((_, hour) => (
+                  {/* Time Oracle Header */}
+                  <div className="sticky top-0 z-40 bg-background/60 backdrop-blur-xl border-b border-primary/5 flex shadow-xl shadow-background/20">
+                    {Array.from({ length: 25 }).map((_, hour) => (
                       <div
                         key={hour}
-                        className="flex-1 border-r border-primary/5 h-full opacity-20"
+                        className="flex-1 min-w-[30px] border-r border-primary/5 p-4 text-center group/slot relative"
                         style={{ flex: `0 0 ${100 / 24}%` }}
                       >
-                        {zoomLevel >= 4 && (
-                          <div className="h-full w-px bg-primary/5 mx-auto" style={{ marginLeft: '50%' }} />
+                        <span className="text-[10px] font-black text-muted-foreground/60 group-hover/slot:text-primary transition-colors uppercase tracking-widest">
+                          {hour.toString().padStart(2, '0')}:00
+                        </span>
+                        {/* Dynamic Markers for Zoomed View */}
+                        {zoomLevel >= 3 && (
+                          <div className="absolute left-1/2 top-full w-px h-2 bg-primary/20" />
                         )}
                       </div>
                     ))}
                   </div>
 
-                  {/* Current Momentum Beam (Glowing Vertical Halo) */}
-                  {currentTimePosition !== null && (
-                    <div
-                      className="absolute top-0 bottom-0 z-10 pointer-events-none flex"
-                      style={{ left: `${(currentTimePosition / (24 * 60)) * 100}%` }}
-                    >
-                      <div className="absolute top-0 bottom-0 right-[100%] w-[60px] bg-gradient-to-r from-transparent to-primary/10" />
-                      <motion.div
-                        animate={{
-                          opacity: [0.4, 0.8, 0.4],
-                          boxShadow: [
-                            "0 0 8px rgba(255,255,255,0.2)",
-                            "0 0 15px rgba(255,255,255,0.4)",
-                            "0 0 8px rgba(255,255,255,0.2)"
-                          ]
-                        }}
-                        transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
-                        className="h-full w-[1px] bg-white/60 relative z-10"
-                      >
-                        <div className="absolute top-0 -left-[2px] w-1.5 h-1.5 rounded-full bg-white shadow-[0_0_10px_#fff]" />
-                        <div className="absolute bottom-4 -left-10 px-2.5 py-0.5 bg-background/80 backdrop-blur-md text-primary text-[7px] font-black uppercase tracking-[0.2em] rounded-full border border-primary/20 flex items-center gap-1.5 whitespace-nowrap opacity-60">
-                          <div className="w-1 h-1 rounded-full bg-primary animate-ping" />
-                          NOW
-                        </div>
-                      </motion.div>
-                    </div>
-                  )}
-
-                  {/* Synchronized Vector Bars */}
-                  <div className="relative pt-4">
-                    {groupedTasks.map((group, groupIndex) => {
+                  {/* Matrix Core */}
+                  <div className="relative" style={{
+                    minHeight: `${groupedTasks.reduce((total, group) => {
                       const isExpanded = expandedGoals.has(group.goalId || 'ungrouped') || filters.viewMode === 'tasks';
-                      if (!isExpanded) return null;
+                      if (!isExpanded && filters.viewMode === 'goals') return total + ROW_HEADER_HEIGHT;
+                      const headerHeight = filters.viewMode === 'tasks' ? ROW_HEADER_HEIGHT : ROW_HEADER_EXPANDED_HEIGHT;
+                      const tasksHeight = filters.viewMode === 'goals' ? (group.tasks.length * TASK_SUB_ROW_HEIGHT) : 0;
+                      return total + headerHeight + tasksHeight;
+                    }, 0)}px`
+                  }}>
+                    {/* Visual Grid - Elevated to be visible inside blocks */}
+                    <div className="flex absolute inset-0 pointer-events-none z-40" style={{ height: '100%' }}>
+                      {Array.from({ length: 24 }).map((_, hour) => (
+                        <div
+                          key={hour}
+                          className="flex-1 border-r border-primary/5 h-full"
+                          style={{ flex: `0 0 ${100 / 24}%` }}>
+                          {zoomLevel >= 4 && (
+                            <div className="h-full w-px bg-primary/5 mx-auto" style={{ marginLeft: '50%' }} />
+                          )}
+                        </div>
+                      ))}
+                    </div>
 
-                      return (
-                        <div key={group.goalId || `group-${groupIndex}`} className="relative border-b border-primary/5" style={{ height: `${group.tasks.length * 60}px` }}>
-                          {group.tasks.map((task, taskIndex) => {
-                            const lifecycleStart = task.createdAt;
-                            const lifecycleEnd = task.deadline || task.scheduledEnd || lifecycleStart;
+                    {/* Current Momentum Beam (Glowing Vertical Halo) */}
+                    {currentTimePosition !== null && (
+                      <div
+                        className="absolute top-0 bottom-0 z-50 pointer-events-none flex"
+                        style={{ left: `${(currentTimePosition / (24 * 60)) * 100}%` }}
+                      >
+                        <div className="absolute top-0 bottom-0 right-[100%] w-[60px] bg-gradient-to-r from-transparent to-primary/10" />
+                        <motion.div
+                          animate={{
+                            opacity: [0.4, 0.8, 0.4],
+                            boxShadow: [
+                              "0 0 8px rgba(255,255,255,0.2)",
+                              "0 0 15px rgba(255,255,255,0.4)",
+                              "0 0 8px rgba(255,255,255,0.2)"
+                            ]
+                          }}
+                          transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
+                          className="h-full w-[1px] bg-white/60 relative z-10"
+                        >
+                          <div className="absolute top-0 -left-[2px] w-1.5 h-1.5 rounded-full bg-white shadow-[0_0_10px_#fff]" />
+                          <div className="absolute bottom-4 -left-10 px-2.5 py-0.5 bg-background/80 backdrop-blur-md text-primary text-[7px] font-black uppercase tracking-[0.2em] rounded-full border border-primary/20 flex items-center gap-1.5 whitespace-nowrap opacity-60">
+                            <div className="w-1 h-1 rounded-full bg-primary animate-ping" />
+                            NOW
+                          </div>
+                        </motion.div>
+                      </div>
+                    )}
 
-                            const rS = typeof lifecycleStart === 'string' ? parseISO(lifecycleStart) : lifecycleStart;
-                            const rE = typeof lifecycleEnd === 'string' ? parseISO(lifecycleEnd) : lifecycleEnd;
-                            const viewStart = startOfDay(selectedDate);
-                            const viewEnd = endOfDay(selectedDate);
+                    {/* Synchronized Vector Bars */}
+                    <div className="relative">
+                      {groupedTasks.map((group, groupIndex) => {
+                        const isExpanded = expandedGoals.has(group.goalId || 'ungrouped') || filters.viewMode === 'tasks';
+                        if (!isExpanded && filters.viewMode === 'goals') {
+                          return (
+                            <div key={group.goalId || `group-${groupIndex}`} className="relative border-b border-primary/5" style={{ height: `${ROW_HEADER_HEIGHT}px` }}>
+                              {/* Empty space for collapsed goal */}
+                            </div>
+                          );
+                        }
 
-                            const displayStart = isBefore(rS, viewStart) ? viewStart : rS;
-                            const displayEnd = isAfter(rE, viewEnd) ? viewEnd : rE;
+                        const headerHeight = filters.viewMode === 'tasks' ? ROW_HEADER_HEIGHT : ROW_HEADER_EXPANDED_HEIGHT;
+                        const tasksHeight = filters.viewMode === 'goals' ? (group.tasks.length * TASK_SUB_ROW_HEIGHT) : 0;
+                        const totalHeight = headerHeight + tasksHeight;
 
-                            if (isAfter(displayStart, displayEnd)) return null;
+                        return (
+                          <div key={group.goalId || `group-${groupIndex}`} className="relative border-b border-primary/5" style={{ height: `${totalHeight}px` }}>
+                            {group.tasks.map((task, taskIndex) => {
+                              const taskTop = filters.viewMode === 'tasks'
+                                ? (ROW_HEADER_HEIGHT - 42) / 2
+                                : ROW_HEADER_EXPANDED_HEIGHT + (taskIndex * TASK_SUB_ROW_HEIGHT) + (TASK_SUB_ROW_HEIGHT - 42) / 2;
+                              const lifecycleStart = task.createdAt;
+                              const lifecycleEnd = task.deadline || task.scheduledEnd || lifecycleStart;
 
-                            const startHours = displayStart.getHours() + displayStart.getMinutes() / 60;
-                            const endHours = displayEnd.getHours() + displayEnd.getMinutes() / 60;
-                            const left = (startHours / 24) * 100;
-                            const width = ((endHours - startHours) / 24) * 100;
+                              const rS = typeof lifecycleStart === 'string' ? parseISO(lifecycleStart) : lifecycleStart;
+                              const rE = typeof lifecycleEnd === 'string' ? parseISO(lifecycleEnd) : lifecycleEnd;
+                              const viewStart = startOfDay(selectedDate);
+                              const viewEnd = endOfDay(selectedDate);
 
-                            // Specific Scheduled Bar metrics
-                            let scheduledLeft = left;
-                            let scheduledWidth = width;
-                            let isCurrentlyScheduled = false;
+                              const displayStart = isBefore(rS, viewStart) ? viewStart : rS;
+                              const displayEnd = isAfter(rE, viewEnd) ? viewEnd : rE;
 
-                            if (task.scheduledStart) {
-                              const sStart = typeof task.scheduledStart === 'string' ? parseISO(task.scheduledStart) : task.scheduledStart;
-                              const sEnd = task.scheduledEnd
-                                ? (typeof task.scheduledEnd === 'string' ? parseISO(task.scheduledEnd) : task.scheduledEnd)
-                                : addMinutes(sStart, task.estimatedDuration || 60);
+                              if (isAfter(displayStart, displayEnd)) return null;
 
-                              if (isSameDay(sStart, selectedDate) || isSameDay(sEnd, selectedDate) || (isBefore(sStart, viewStart) && isAfter(sEnd, viewEnd))) {
-                                isCurrentlyScheduled = true;
-                                const dsStart = isBefore(sStart, viewStart) ? viewStart : sStart;
-                                const dsEnd = isAfter(sEnd, viewEnd) ? viewEnd : sEnd;
+                              const startHours = displayStart.getHours() + displayStart.getMinutes() / 60;
+                              const endHours = displayEnd.getHours() + displayEnd.getMinutes() / 60;
+                              const left = (startHours / 24) * 100;
+                              const width = ((endHours - startHours) / 24) * 100;
 
-                                const hsStart = dsStart.getHours() + dsStart.getMinutes() / 60;
-                                const hsEnd = dsEnd.getHours() + dsEnd.getMinutes() / 60;
-                                scheduledLeft = (hsStart / 24) * 100;
-                                scheduledWidth = ((hsEnd - hsStart) / 24) * 100;
+                              // Specific Scheduled Bar metrics
+                              let scheduledLeft = left;
+                              let scheduledWidth = width;
+                              let isCurrentlyScheduled = false;
+
+                              if (task.scheduledStart) {
+                                const sStart = typeof task.scheduledStart === 'string' ? parseISO(task.scheduledStart) : task.scheduledStart;
+                                const sEnd = task.scheduledEnd
+                                  ? (typeof task.scheduledEnd === 'string' ? parseISO(task.scheduledEnd) : task.scheduledEnd)
+                                  : addMinutes(sStart, task.estimatedDuration || 60);
+
+                                if (isSameDay(sStart, selectedDate) || isSameDay(sEnd, selectedDate) || (isBefore(sStart, viewStart) && isAfter(sEnd, viewEnd))) {
+                                  isCurrentlyScheduled = true;
+                                  const dsStart = isBefore(sStart, viewStart) ? viewStart : sStart;
+                                  const dsEnd = isAfter(sEnd, viewEnd) ? viewEnd : sEnd;
+
+                                  const hsStart = dsStart.getHours() + dsStart.getMinutes() / 60;
+                                  const hsEnd = dsEnd.getHours() + dsEnd.getMinutes() / 60;
+                                  scheduledLeft = (hsStart / 24) * 100;
+                                  scheduledWidth = ((hsEnd - hsStart) / 24) * 100;
+                                }
                               }
-                            }
 
-                            return (
-                              <div key={task.id} className="absolute inset-x-0" style={{ top: `${taskIndex * 60 + 10}px`, height: '42px' }}>
-                                {/* Neural Window Indication - The broader context shadow */}
-                                <div
-                                  className="absolute inset-y-0 rounded-xl border overflow-hidden transition-all duration-700 opacity-40 group-hover:opacity-60"
-                                  style={{
-                                    left: `${left}%`,
-                                    width: `${Math.max(width, 0.5)}%`,
-                                    backgroundColor: `color-mix(in srgb, ${group.goalColor}, transparent 96%)`,
-                                    borderColor: `color-mix(in srgb, ${group.goalColor}, transparent 70%)`,
-                                    backgroundImage: `repeating-linear-gradient(-45deg, color-mix(in srgb, ${group.goalColor}, transparent 75%) 0px, color-mix(in srgb, ${group.goalColor}, transparent 75%) 2px, transparent 2px, transparent 12px)`,
-                                    zIndex: 0,
-                                  }}
-                                />
-
-                                {/* Active Task Bar - The specifically scheduled window */}
-                                {isCurrentlyScheduled && (
-                                  <motion.div
-                                    initial={{ opacity: 0, scaleX: 0 }}
-                                    animate={{ opacity: 1, scaleX: 1 }}
-                                    onClick={() => {
-                                      const params = new URLSearchParams();
-                                      params.set('fromView', 'timeline');
-                                      if (isProjectView && task.projectId && task.projectId !== 'undefined') {
-                                        params.set('fromProject', task.projectId);
-                                      }
-                                      params.set('fromTab', 'timeline');
-                                      params.set('date', format(selectedDate, 'yyyy-MM-dd'));
-                                      router.push(`/tasks/${task.id}?${params.toString()}`);
-                                    }}
-                                    className={cn(
-                                      "absolute rounded-xl p-2.5 transition-all hover:z-50 cursor-pointer overflow-hidden backdrop-blur-md group/bar border-l-4",
-                                      task.status === 'done' ? "bg-emerald-500/10 border-emerald-500/30 shadow-[0_0_15px_rgba(16,185,129,0.1)]" :
-                                        task.status === 'in-progress' ? "bg-primary/10 border-primary/30 shadow-[0_0_15px_rgba(59,130,246,0.1)]" : "bg-muted/10 border-muted-foreground/20"
-                                    )}
+                              return (
+                                <div key={task.id} className="absolute inset-x-0" style={{ top: `${taskTop}px`, height: '42px' }}>
+                                  {/* Neural Window Indication - The broader context shadow */}
+                                  <div
+                                    className="absolute inset-y-0 rounded-xl border overflow-hidden transition-all duration-700 opacity-40 group-hover:opacity-60"
                                     style={{
-                                      left: `${scheduledLeft}%`,
-                                      width: `${Math.max(scheduledWidth, 0.5)}%`,
-                                      zIndex: 1,
+                                      left: `${left}%`,
+                                      width: `${Math.max(width, 0.5)}%`,
+                                      backgroundColor: `color-mix(in srgb, ${group.goalColor}, transparent 96%)`,
+                                      borderColor: `color-mix(in srgb, ${group.goalColor}, transparent 70%)`,
+                                      backgroundImage: `repeating-linear-gradient(-45deg, color-mix(in srgb, ${group.goalColor}, transparent 75%) 0px, color-mix(in srgb, ${group.goalColor}, transparent 75%) 2px, transparent 2px, transparent 12px)`,
+                                      zIndex: 0,
                                     }}
-                                  >
-                                    <div className="flex items-center justify-between h-full">
-                                      <div className="flex flex-col min-w-0">
-                                        <span className={cn(
-                                          "text-[10px] font-black truncate tracking-tight uppercase group-hover/bar:text-primary transition-colors",
-                                          task.status === 'done' && "line-through opacity-40"
-                                        )}>
-                                          {task.title}
-                                        </span>
-                                        {zoomLevel >= 2 && task.scheduledStart && (
-                                          <div className="flex items-center gap-1.5 opacity-40">
-                                            <span className="text-[7px] font-black">
-                                              {format(typeof task.scheduledStart === 'string' ? parseISO(task.scheduledStart) : task.scheduledStart, 'HH:mm')}
-                                              {task.scheduledEnd && ` - ${format(typeof task.scheduledEnd === 'string' ? parseISO(task.scheduledEnd) : task.scheduledEnd, 'HH:mm')}`}
-                                            </span>
-                                            {task.priority === 'high' && <Zap className="h-2 w-2 text-rose-500 fill-current" />}
-                                          </div>
-                                        )}
-                                      </div>
-                                    </div>
-                                  </motion.div>
-                                )}
+                                  />
 
-                                {/* Tracked & Manual Logs (Actual Execution Pulse) */}
-                                {timeEntries.filter(e => e.taskId === task.id).map((entry) => {
-                                  const start = new Date(entry.startTime);
-                                  const end = entry.endTime ? new Date(entry.endTime) : (entry.isRunning ? currentTime : new Date(start.getTime() + (entry.duration || 30) * 60000));
-
-                                  const viewStart = startOfDay(selectedDate);
-                                  const viewEnd = endOfDay(selectedDate);
-                                  if (isAfter(start, viewEnd) || isBefore(end, viewStart)) return null;
-
-                                  const dS = isBefore(start, viewStart) ? viewStart : start;
-                                  const dE = isAfter(end, viewEnd) ? viewEnd : end;
-
-                                  const startHours = dS.getHours() + dS.getMinutes() / 60;
-                                  const endHours = dE.getHours() + dE.getMinutes() / 60;
-
-                                  const left = (startHours / 24) * 100;
-                                  const width = ((endHours - startHours) / 24) * 100;
-
-                                  return (
+                                  {/* Active Task Bar - The specifically scheduled window */}
+                                  {isCurrentlyScheduled && (
                                     <motion.div
-                                      key={entry.id}
-                                      initial={{ opacity: 0, y: 5, scale: 0.95 }}
-                                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                                      whileHover={{ scale: 1.02, zIndex: 60 }}
+                                      initial={{ opacity: 0, scaleX: 0 }}
+                                      animate={{ opacity: 1, scaleX: 1 }}
+                                      onClick={() => {
+                                        const params = new URLSearchParams();
+                                        params.set('fromView', 'timeline');
+                                        if (isProjectView && task.projectId && task.projectId !== 'undefined') {
+                                          params.set('fromProject', task.projectId);
+                                        }
+                                        params.set('fromTab', 'timeline');
+                                        params.set('date', format(selectedDate, 'yyyy-MM-dd'));
+                                        router.push(`/tasks/${task.id}?${params.toString()}`);
+                                      }}
                                       className={cn(
-                                        "absolute h-[85%] top-[7.5%] rounded-lg border flex items-center px-2 gap-1.5 overflow-hidden transition-all backdrop-blur-md shadow-[0_8px_16px_-6px_rgba(0,0,0,0.2)]",
-                                        entry.isRunning
-                                          ? "ring-2 ring-orange-500/40 shadow-orange-500/20"
-                                          : ""
+                                        "absolute rounded-xl p-2.5 transition-all hover:z-50 cursor-pointer overflow-hidden backdrop-blur-md group/bar border-l-4",
+                                        task.status === 'done' ? "bg-emerald-500/10 border-emerald-500/30 shadow-[0_0_15px_rgba(16,185,129,0.1)]" :
+                                          task.status === 'in-progress' ? "bg-primary/10 border-primary/30 shadow-[0_0_15px_rgba(59,130,246,0.1)]" : "bg-muted/10 border-muted-foreground/20"
                                       )}
                                       style={{
-                                        left: `${left}%`,
-                                        width: `${Math.max(width, 1.5)}%`,
-                                        zIndex: 10,
-                                        backgroundColor: entry.isRunning
-                                          ? 'rgba(249, 115, 22, 0.7)'
-                                          : `color-mix(in srgb, ${group.goalColor}, transparent 30%)`,
-                                        borderColor: entry.isRunning
-                                          ? 'rgba(251, 146, 60, 0.5)'
-                                          : `color-mix(in srgb, ${group.goalColor}, transparent 60%)`,
-                                        color: entry.isRunning ? '#fff' : 'white', // Ensure text is readable on dark glass
+                                        left: `${scheduledLeft}%`,
+                                        width: `${Math.max(scheduledWidth, 0.5)}%`,
+                                        zIndex: 1,
                                       }}
-                                      title={`${entry.category}: ${entry.description || 'No description'}`}
                                     >
-                                      {/* Top Edge Highlight for 3D Crystal Effect */}
-                                      <div className="absolute top-0 left-0 right-0 h-[1px] bg-white/30 z-20" />
-
-                                      <Zap className={cn("w-2.5 h-2.5 shrink-0 z-10", entry.isRunning && "animate-pulse text-white")} />
-                                      <span className="text-[7px] font-black uppercase tracking-widest truncate z-10 drop-shadow-sm">
-                                        {entry.category || 'Manual Log'}
-                                      </span>
-
-                                      {entry.isRunning && (
-                                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer z-0" />
-                                      )}
+                                      <div className="flex items-center justify-between h-full">
+                                        <div className="flex flex-col min-w-0">
+                                          <span className={cn(
+                                            "text-[10px] font-black truncate tracking-tight uppercase group-hover/bar:text-primary transition-colors",
+                                            task.status === 'done' && "line-through opacity-40"
+                                          )}>
+                                            {task.title}
+                                          </span>
+                                          {zoomLevel >= 2 && task.scheduledStart && (
+                                            <div className="flex items-center gap-1.5 opacity-40">
+                                              <span className="text-[7px] font-black">
+                                                {format(typeof task.scheduledStart === 'string' ? parseISO(task.scheduledStart) : task.scheduledStart, 'HH:mm')}
+                                                {task.scheduledEnd && ` - ${format(typeof task.scheduledEnd === 'string' ? parseISO(task.scheduledEnd) : task.scheduledEnd, 'HH:mm')}`}
+                                              </span>
+                                              {task.priority === 'high' && <Zap className="h-2 w-2 text-rose-500 fill-current" />}
+                                            </div>
+                                          )}
+                                        </div>
+                                      </div>
                                     </motion.div>
-                                  );
-                                })}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      );
-                    })}
+                                  )}
+
+                                  {/* Tracked & Manual Logs (Actual Execution Pulse) */}
+                                  {timeEntries.filter(e => e.taskId === task.id).map((entry) => {
+                                    const start = new Date(entry.startTime);
+                                    const end = entry.endTime ? new Date(entry.endTime) : (entry.isRunning ? currentTime : new Date(start.getTime() + (entry.duration || 30) * 60000));
+
+                                    const viewStart = startOfDay(selectedDate);
+                                    const viewEnd = endOfDay(selectedDate);
+                                    if (isAfter(start, viewEnd) || isBefore(end, viewStart)) return null;
+
+                                    const dS = isBefore(start, viewStart) ? viewStart : start;
+                                    const dE = isAfter(end, viewEnd) ? viewEnd : end;
+
+                                    const startHours = dS.getHours() + dS.getMinutes() / 60;
+                                    const endHours = dE.getHours() + dE.getMinutes() / 60;
+
+                                    const left = (startHours / 24) * 100;
+                                    const width = ((endHours - startHours) / 24) * 100;
+
+                                    return (
+                                      <motion.div
+                                        key={entry.id}
+                                        initial={{ opacity: 0, y: 5, scale: 0.95 }}
+                                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                                        whileHover={{ scale: 1.02, zIndex: 60 }}
+                                        className={cn(
+                                          "absolute h-[85%] top-[7.5%] rounded-lg border flex items-center px-2 gap-1.5 overflow-hidden transition-all backdrop-blur-md shadow-[0_8px_16px_-6px_rgba(0,0,0,0.2)]",
+                                          entry.isRunning
+                                            ? "ring-2 ring-orange-500/40 shadow-orange-500/20"
+                                            : ""
+                                        )}
+                                        style={{
+                                          left: `${left}%`,
+                                          width: `${Math.max(width, 1.5)}%`,
+                                          zIndex: 10,
+                                          backgroundColor: entry.isRunning
+                                            ? 'rgba(249, 115, 22, 0.7)'
+                                            : `color-mix(in srgb, ${group.goalColor}, transparent 30%)`,
+                                          borderColor: entry.isRunning
+                                            ? 'rgba(251, 146, 60, 0.5)'
+                                            : `color-mix(in srgb, ${group.goalColor}, transparent 60%)`,
+                                          color: entry.isRunning ? '#fff' : 'white', // Ensure text is readable on dark glass
+                                        }}
+                                        title={`${entry.category}: ${entry.description || 'No description'}`}
+                                      >
+                                        {/* Top Edge Highlight for 3D Crystal Effect */}
+                                        <div className="absolute top-0 left-0 right-0 h-[1px] bg-white/30 z-20" />
+
+                                        <Zap className={cn("w-2.5 h-2.5 shrink-0 z-10", entry.isRunning && "animate-pulse text-white")} />
+                                        <span className="text-[7px] font-black uppercase tracking-widest truncate z-10 drop-shadow-sm">
+                                          {entry.category || 'Manual Log'}
+                                        </span>
+
+                                        {entry.isRunning && (
+                                          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer z-0" />
+                                        )}
+                                      </motion.div>
+                                    );
+                                  })}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
               </div>
