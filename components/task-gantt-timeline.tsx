@@ -313,8 +313,8 @@ export function TaskGanttTimeline({ tasks, goals, timeEntries = [], selectedDate
         .occupied-mesh {
           background-image: repeating-linear-gradient(
             -45deg,
-            rgba(245, 158, 11, 0.15) 0px,
-            rgba(245, 158, 11, 0.15) 1px,
+            rgba(245, 158, 11, 0.25) 0px,
+            rgba(245, 158, 11, 0.25) 1px,
             transparent 1px,
             transparent 5px
           );
@@ -918,13 +918,13 @@ export function TaskGanttTimeline({ tasks, goals, timeEntries = [], selectedDate
                               <div key={task.id} className="absolute inset-x-0" style={{ top: `${taskIndex * 60 + 10}px`, height: '42px' }}>
                                 {/* Neural Window Indication - The broader context shadow */}
                                 <div
-                                  className="absolute inset-y-0 rounded-xl border overflow-hidden transition-all duration-700 opacity-20 group-hover:opacity-40"
+                                  className="absolute inset-y-0 rounded-xl border overflow-hidden transition-all duration-700 opacity-40 group-hover:opacity-60"
                                   style={{
                                     left: `${left}%`,
                                     width: `${Math.max(width, 0.5)}%`,
-                                    backgroundColor: `color-mix(in srgb, ${group.goalColor}, transparent 98%)`,
-                                    borderColor: `color-mix(in srgb, ${group.goalColor}, transparent 80%)`,
-                                    backgroundImage: `repeating-linear-gradient(-45deg, color-mix(in srgb, ${group.goalColor}, transparent 85%) 0px, color-mix(in srgb, ${group.goalColor}, transparent 85%) 2px, transparent 2px, transparent 12px)`,
+                                    backgroundColor: `color-mix(in srgb, ${group.goalColor}, transparent 96%)`,
+                                    borderColor: `color-mix(in srgb, ${group.goalColor}, transparent 70%)`,
+                                    backgroundImage: `repeating-linear-gradient(-45deg, color-mix(in srgb, ${group.goalColor}, transparent 75%) 0px, color-mix(in srgb, ${group.goalColor}, transparent 75%) 2px, transparent 2px, transparent 12px)`,
                                     zIndex: 0,
                                   }}
                                 />
