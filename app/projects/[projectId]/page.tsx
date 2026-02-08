@@ -42,7 +42,7 @@ import { TaskGanttTimeline } from '@/components/task-gantt-timeline';
 import { EditProjectDialog } from '@/components/projects/edit-project-dialog';
 import { CreateNoteDialog } from '@/components/notes/create-note-dialog';
 import { CreateGoalDialog } from '@/components/goals/create-goal-dialog';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import Link from 'next/link';
 import { MainLayout } from '@/components/layout/main-layout';
 import { ProtectedRoute } from '@/components/protected-route';
@@ -78,6 +78,15 @@ export default function ProjectPage() {
         const status = searchParams.get('status') as 'all' | 'todo' | 'in-progress' | 'done';
         if (status && ['all', 'todo', 'in-progress', 'done'].includes(status)) {
             setStatusFilter(status);
+        }
+        const dateParam = searchParams.get('date');
+        if (dateParam) {
+            try {
+                const parsedDate = parseISO(dateParam);
+                setSelectedDate(parsedDate);
+            } catch (e) {
+                console.error('Failed to parse date from URL:', e);
+            }
         }
     }, [searchParams]);
 
@@ -132,29 +141,40 @@ export default function ProjectPage() {
         );
     }
 
-    // Filter items by project
     // Filter items by project and search query
-    const projectTasks = tasks.filter(t => t.projectId === projectId &&
+    const projectTasks = tasks.filter(t =>
+        String(t.projectId) === String(projectId) &&
         (t.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            t.description?.toLowerCase().includes(searchQuery.toLowerCase())));
+            t.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            (t.goalId && goals.find(g => g.id === t.goalId)?.title.toLowerCase().includes(searchQuery.toLowerCase())))
+    );
 
-    const projectNotes = notes.filter(n => n.projectId === projectId &&
+    const projectNotes = notes.filter(n =>
+        String(n.projectId) === String(projectId) &&
         (n.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            n.content.toLowerCase().includes(searchQuery.toLowerCase())));
+            n.content.toLowerCase().includes(searchQuery.toLowerCase()))
+    );
 
-    const projectGoals = goals.filter(g => g.projectId === projectId &&
+    const projectGoals = goals.filter(g =>
+        String(g.projectId) === String(projectId) &&
         (g.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            g.description?.toLowerCase().includes(searchQuery.toLowerCase())));
+            g.description?.toLowerCase().includes(searchQuery.toLowerCase()))
+    );
 
-    const projectHabits = habits.filter(h => h.projectId === projectId &&
-        h.title.toLowerCase().includes(searchQuery.toLowerCase()));
+    const projectHabits = habits.filter(h =>
+        String(h.projectId) === String(projectId) &&
+        h.title.toLowerCase().includes(searchQuery.toLowerCase())
+    );
 
     const filteredProjectTasks = projectTasks.filter(t => {
         if (statusFilter === 'all') return true;
         return t.status === statusFilter;
     });
 
-    const projectTimeEntries = timeEntries.filter(e => e.projectId === projectId);
+    const projectTimeEntries = timeEntries.filter(e =>
+        String(e.projectId) === String(projectId) ||
+        (e.taskId && tasks.some(t => t.id === e.taskId && String(t.projectId) === String(projectId)))
+    );
 
     // Calculate statistics
     const totalTasks = projectTasks.length;
@@ -557,7 +577,7 @@ export default function ProjectPage() {
                                                             <div
                                                                 key={task.id}
                                                                 className="group relative flex items-center gap-4 p-4 rounded-xl border bg-background/40 backdrop-blur-md hover:border-primary/20 hover:shadow-xl transition-all duration-300 cursor-pointer"
-                                                                onClick={() => router.push(`/tasks/${task.id}?fromView=list&fromProject=${projectId}&fromTab=tasks`)}
+                                                                onClick={() => router.push(`/tasks/${task.id}?fromView=list&fromProject=${projectId}&fromTab=tasks&date=${format(selectedDate, 'yyyy-MM-dd')}`)}
                                                             >
                                                                 <div className={`absolute left-0 top-0 bottom-0 w-1 rounded-l-lg ${task.priority === 'high' ? 'bg-rose-500' :
                                                                     task.priority === 'medium' ? 'bg-amber-500' :
@@ -613,11 +633,23 @@ export default function ProjectPage() {
                                                     </Button>
                                                 </div>
                                                 <div className="bg-background/20 rounded-2xl overflow-hidden border border-primary/5">
-                                                    <TaskGanttTimeline
-                                                        tasks={projectTasks}
-                                                        goals={projectGoals}
-                                                        selectedDate={selectedDate}
-                                                    />
+                                                    {(() => {
+                                                        const referencedGoalIds = new Set(filteredProjectTasks.map(t => t.goalId).filter(Boolean));
+                                                        const timelineGoals = goals.filter(g =>
+                                                            String(g.projectId) === String(projectId) ||
+                                                            !g.projectId ||
+                                                            referencedGoalIds.has(String(g.id))
+                                                        );
+                                                        return (
+                                                            <TaskGanttTimeline
+                                                                tasks={filteredProjectTasks}
+                                                                goals={timelineGoals}
+                                                                timeEntries={projectTimeEntries}
+                                                                selectedDate={selectedDate}
+                                                                isProjectView={true}
+                                                            />
+                                                        );
+                                                    })()}
                                                 </div>
                                             </div>
                                         )}

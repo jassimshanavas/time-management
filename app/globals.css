@@ -164,4 +164,18 @@
   .hover\:scrollbar-thumb-primary\/40:hover {
     scrollbar-color: hsl(var(--primary) / 0.4) transparent !important;
   }
+
+  @keyframes shimmer {
+    0% {
+      transform: translateX(-100%);
+    }
+
+    100% {
+      transform: translateX(100%);
+    }
+  }
+
+  .animate-shimmer {
+    animation: shimmer 2s infinite linear;
+  }
 }

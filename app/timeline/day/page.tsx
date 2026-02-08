@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useRef } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { MainLayout } from '@/components/layout/main-layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -17,7 +18,7 @@ import {
     Sparkles,
     Layout
 } from 'lucide-react';
-import { format, addDays, subDays, startOfDay, isSameDay, addMinutes, differenceInMinutes, startOfHour, setHours, setMinutes } from 'date-fns';
+import { format, addDays, subDays, startOfDay, isSameDay, addMinutes, differenceInMinutes, startOfHour, setHours, setMinutes, parseISO } from 'date-fns';
 import { ProtectedRoute } from '@/components/protected-route';
 import { DataLoader } from '@/components/data-loader';
 import { motion, AnimatePresence, useMotionValue, useTransform, useDragControls } from 'framer-motion';
@@ -31,8 +32,23 @@ const STEP_MINUTES = 15;
 const STEP_HEIGHT = (STEP_MINUTES / 60) * HOUR_HEIGHT;
 
 export default function DayTimelinePage() {
-    const { tasks, updateTask, selectedProjectId, projects } = useStore();
+    const router = useRouter();
+    const searchParams = useSearchParams();
+    const { tasks, updateTask, selectedProjectId, projects, timeEntries } = useStore();
+    const [currentTime, setCurrentTime] = useState(new Date());
     const [selectedDate, setSelectedDate] = useState(new Date());
+
+    useEffect(() => {
+        const dateParam = searchParams.get('date');
+        if (dateParam) {
+            try {
+                const parsedDate = parseISO(dateParam);
+                setSelectedDate(parsedDate);
+            } catch (e) {
+                console.error('Failed to parse date from URL:', e);
+            }
+        }
+    }, [searchParams]);
     const [searchQuery, setSearchQuery] = useState('');
     const scrollContainerRef = useRef<HTMLDivElement>(null);
 
@@ -54,6 +70,13 @@ export default function DayTimelinePage() {
             .filter(t => t.status !== 'done')
             .filter(t => t.title.toLowerCase().includes(searchQuery.toLowerCase()));
     }, [filteredTasks, selectedDate, searchQuery]);
+
+    const dayTimeEntries = useMemo(() => {
+        return timeEntries.filter(entry => {
+            const start = new Date(entry.startTime);
+            return isSameDay(start, selectedDate);
+        });
+    }, [timeEntries, selectedDate]);
 
     // Handle Drag & Update
     const handleTaskMove = async (task: Task, newTop: number) => {
@@ -111,6 +134,11 @@ export default function DayTimelinePage() {
     }
 
     // Scroll to current time or 8 AM on mount
+    useEffect(() => {
+        const interval = setInterval(() => setCurrentTime(new Date()), 60000);
+        return () => clearInterval(interval);
+    }, []);
+
     useEffect(() => {
         if (scrollContainerRef.current) {
             const now = new Date();
@@ -275,10 +303,45 @@ export default function DayTimelinePage() {
                                                             onMove={(newTop) => handleTaskMove(task, newTop)}
                                                             onResize={(newHeight) => handleTaskResize(task, newHeight)}
                                                             onRemove={() => updateTask(task.id, { scheduledStart: undefined, scheduledEnd: undefined })}
+                                                            selectedDate={selectedDate}
                                                         />
                                                     );
                                                 })}
                                             </AnimatePresence>
+
+                                            {/* Recorded Time Logs */}
+                                            <div className="absolute inset-0 pointer-events-none z-10">
+                                                {dayTimeEntries.map((entry) => {
+                                                    const start = new Date(entry.startTime);
+                                                    const end = entry.endTime ? new Date(entry.endTime) : (isSameDay(start, currentTime) ? currentTime : addMinutes(start, 30));
+
+                                                    const startMin = start.getHours() * 60 + start.getMinutes();
+                                                    const endMin = end.getHours() * 60 + end.getMinutes();
+
+                                                    const top = (startMin / 60) * HOUR_HEIGHT;
+                                                    const height = Math.max(10, ((endMin - startMin) / 60) * HOUR_HEIGHT);
+
+                                                    return (
+                                                        <motion.div
+                                                            key={entry.id}
+                                                            initial={{ opacity: 0, scaleY: 0 }}
+                                                            animate={{ opacity: 1, scaleY: 1 }}
+                                                            className="absolute right-0 w-24 sm:w-32 bg-orange-500/20 border-l-4 border-orange-500 rounded-l-lg p-1.5 flex flex-col gap-1 overflow-hidden backdrop-blur-sm"
+                                                            style={{ top, height, zIndex: 50 }}
+                                                        >
+                                                            <div className="flex items-center gap-1">
+                                                                <Clock className="h-2.5 w-2.5 text-orange-500" />
+                                                                <span className="text-[8px] font-black uppercase text-orange-600 truncate">{entry.category} Log</span>
+                                                            </div>
+                                                            {height > 30 && (
+                                                                <span className="text-[7px] font-medium text-orange-700/60 leading-tight line-clamp-2 italic">
+                                                                    {entry.description || 'Executing Operation'}
+                                                                </span>
+                                                            )}
+                                                        </motion.div>
+                                                    );
+                                                })}
+                                            </div>
 
                                             {/* Current Time Line */}
                                             {isSameDay(new Date(), selectedDate) && <CurrentTimeLine />}
@@ -303,6 +366,7 @@ interface TimelineTaskProps {
     onMove: (newTop: number) => void;
     onResize: (newHeight: number) => void;
     onRemove: () => void;
+    selectedDate: Date;
 }
 
 function TimelineTask({
@@ -313,8 +377,10 @@ function TimelineTask({
     projectName,
     onMove,
     onResize,
-    onRemove
+    onRemove,
+    selectedDate
 }: TimelineTaskProps) {
+    const router = useRouter();
     const [isDragging, setIsDragging] = useState(false);
     const [isResizing, setIsResizing] = useState(false);
     const dragControls = useDragControls();
@@ -387,12 +453,15 @@ function TimelineTask({
                 </div>
 
                 {/* Content Area */}
-                <div className="flex-1 flex flex-col min-w-0 px-2 py-0.5 pointer-events-none">
+                <div
+                    className="flex-1 flex flex-col min-w-0 px-2 py-0.5 cursor-pointer"
+                    onClick={() => router.push(`/tasks/${task.id}?fromView=day-velocity&date=${format(selectedDate, 'yyyy-MM-dd')}`)}
+                >
                     <div className="flex items-center gap-2 mb-1">
                         <Badge variant="outline" className="text-[9px] h-4 py-0 font-mono bg-background/50 border-primary/20 shrink-0">
                             {format(addMinutes(startOfDay(new Date()), (localTop / HOUR_HEIGHT) * 60), 'HH:mm')}
                         </Badge>
-                        <h4 className={cn("text-xs font-bold truncate", task.status === 'done' && "line-through")}>
+                        <h4 className={cn("text-xs font-bold truncate group-hover:text-primary transition-colors", task.status === 'done' && "line-through")}>
                             {task.title}
                         </h4>
                     </div>

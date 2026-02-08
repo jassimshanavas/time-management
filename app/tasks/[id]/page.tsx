@@ -71,7 +71,8 @@ import {
   Download,
   Users,
   Share2,
-  Settings
+  Settings,
+  Layout
 } from 'lucide-react';
 import * as htmlToImage from 'html-to-image';
 import { toast } from 'sonner';
@@ -107,6 +108,7 @@ function TaskDetailPageContent() {
   const {
     tasks,
     goals,
+    projects,
     updateTask,
     deleteTask,
     timeEntries,
@@ -313,6 +315,7 @@ function TaskDetailPageContent() {
     } else if (taskRunningEntry) {
       await stopTimeEntry(taskRunningEntry.id, sessionSummary);
     }
+    toast.success(editingEntryId ? 'Entry updated' : 'Operation recorded');
     setSessionSummary('');
     setSessionCategory('');
     setIsSummaryDialogOpen(false);
@@ -339,6 +342,7 @@ function TaskDetailPageContent() {
       category: template.category,
       description: template.name,
       taskId: task.id,
+      projectId: task.projectId,
       startTime: start,
       endTime: end,
       duration: template.duration,
@@ -360,6 +364,7 @@ function TaskDetailPageContent() {
       category: timerForm.category.trim(),
       description: timerForm.description.trim() || undefined,
       taskId: task.id,
+      projectId: task.projectId,
       startTime: new Date(),
       isRunning: true,
     });
@@ -384,6 +389,7 @@ function TaskDetailPageContent() {
       category: manualEntry.category.trim() || task.title,
       description: finalDescription,
       taskId: task.id,
+      projectId: task.projectId,
       startTime,
       endTime: now,
       duration: totalMinutes,
@@ -400,6 +406,7 @@ function TaskDetailPageContent() {
       category: entry.category,
       description: entry.description,
       taskId: task.id,
+      projectId: task.projectId,
       startTime: new Date(),
       isRunning: true,
     });
@@ -630,10 +637,11 @@ function TaskDetailPageContent() {
     return { label: 'INERT', color: 'bg-muted-foreground/20', text: 'text-muted-foreground/40', icon: Circle, glow: 'none' };
   }, [momentumRatio]);
 
-  const linkedGoal = task?.goalId ? goals.find(g => g.id === task.goalId) : null;
+  const linkedGoal = task?.goalId ? goals.find(g => String(g.id) === String(task.goalId)) : null;
   const linkedMilestone = linkedGoal && task?.milestoneId
-    ? linkedGoal.milestones.find(m => m.id === task.milestoneId)
+    ? linkedGoal.milestones.find(m => String(m.id) === String(task.milestoneId))
     : null;
+  const linkedProject = task?.projectId ? projects.find(p => String(p.id) === String(task.projectId)) : null;
   const totalSubtasks = task?.subtasks?.length || 0;
   const completedSubtasks = task?.subtasks?.filter((s) => s.done).length || 0;
   const otherTasks = tasks.filter((t) => t.id !== task?.id);
@@ -743,20 +751,28 @@ function TaskDetailPageContent() {
                     const fromView = searchParams.get('fromView');
                     const fromProject = searchParams.get('fromProject');
                     const fromTab = searchParams.get('fromTab');
+                    const date = searchParams.get('date');
 
-                    if (fromProject) {
+                    if (fromProject && fromProject !== 'undefined') {
                       let url = `/projects/${fromProject}`;
                       const params = new URLSearchParams();
                       if (fromTab) params.set('tab', fromTab);
                       if (fromView && fromView !== 'overview') params.set('view', fromView);
+                      if (date) params.set('date', date);
 
                       const queryString = params.toString();
                       router.push(queryString ? `${url}?${queryString}` : url);
                     } else if (fromView === 'kanban' || fromView === 'timeline' || fromView === 'list') {
-                      router.push(fromView === 'list' ? '/tasks' : `/tasks?view=${fromView}`);
+                      let url = fromView === 'list' ? '/tasks' : `/tasks?view=${fromView}`;
+                      if (date) url += (url.includes('?') ? '&' : '?') + `date=${date}`;
+                      router.push(url);
                     } else if (fromView === 'time-tracking-gantt') {
                       router.push('/timeline/gantt');
-                    } else if (fromView === 'time-tracking') {
+                    } else if (fromView === 'time-tracking' || fromView === 'day-velocity') {
+                      let url = '/timeline/day';
+                      if (date) url += `?date=${date}`;
+                      router.push(url);
+                    } else if (fromView === 'time-tracking-dashboard') {
                       router.push('/time-tracking');
                     } else {
                       router.back();
@@ -785,11 +801,36 @@ function TaskDetailPageContent() {
                         <div className="absolute inset-0 animate-pulse bg-white/20" />
                       )}
                     </div>
-                    <div className="flex items-center gap-2 mt-6">
-                      <Badge variant="outline" className="font-bold opacity-60">Created {format(toDate(task.createdAt)!, 'MMM d, yyyy')}</Badge>
-                      {task.projectId && (
-                        <Badge variant="secondary" className="bg-primary/5 text-primary border-primary/10">Project Member</Badge>
+                    <div className="flex flex-wrap items-center gap-2.5 mt-6">
+                      <Badge variant="outline" className="font-bold border-primary/10 bg-muted/30 text-muted-foreground py-1 px-3">
+                        Created {format(toDate(task.createdAt)!, 'MMM d, yyyy')}
+                      </Badge>
+
+                      {linkedProject && (
+                        <Badge
+                          variant="secondary"
+                          className="font-black text-[10px] uppercase tracking-widest px-3 py-1 border transition-all"
+                          style={{
+                            backgroundColor: `${linkedProject.color}15`,
+                            color: linkedProject.color,
+                            borderColor: `${linkedProject.color}30`
+                          }}
+                        >
+                          <Zap className="h-3 w-3 mr-1.5 opacity-70" />
+                          {linkedProject.name} Project
+                        </Badge>
                       )}
+
+                      {linkedGoal && (
+                        <Badge
+                          variant="secondary"
+                          className="bg-amber-500/10 text-amber-500 border-amber-500/20 font-black text-[10px] uppercase tracking-widest px-3 py-1"
+                        >
+                          <Target className="h-3 w-3 mr-1.5 opacity-70" />
+                          Goal: {linkedGoal.title}
+                        </Badge>
+                      )}
+
                       <div className={`flex items-center gap-1.5 ml-2 ${momentumConfig.text} font-black text-[10px] tracking-[0.2em] animate-in fade-in slide-in-from-left-2 duration-500`}>
                         <momentumConfig.icon className="h-3 w-3" />
                         {momentumConfig.label}
@@ -1273,6 +1314,59 @@ function TaskDetailPageContent() {
 
               {/* Right Column: Status & Intelligence */}
               <div className="lg:col-span-4 space-y-8">
+
+                {/* Strategic Context Card */}
+                {(linkedProject || linkedGoal) && (
+                  <Card className="border-none bg-muted/20 rounded-[2.5rem] overflow-hidden shadow-sm">
+                    <div className="bg-gradient-to-r from-primary/10 to-transparent p-6 border-b border-primary/5">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/20">
+                          <Layout className="h-4 w-4" />
+                        </div>
+                        <p className="text-[10px] font-black uppercase tracking-[0.2em]">Strategic Context</p>
+                      </div>
+                    </div>
+                    <CardContent className="p-6 space-y-6">
+                      {linkedProject && (
+                        <div className="space-y-3 cursor-pointer group/project" onClick={() => router.push(`/projects/${linkedProject.id}`)}>
+                          <Label className="text-[9px] font-black uppercase tracking-widest opacity-40">Active Workspace</Label>
+                          <div className="flex items-center justify-between p-3 rounded-2xl bg-background/50 border border-primary/5 group-hover/project:border-primary/20 transition-all">
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-lg flex items-center justify-center font-black text-xs text-white shadow-sm" style={{ backgroundColor: linkedProject.color }}>
+                                {linkedProject.name.slice(0, 1).toUpperCase()}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-xs font-bold truncate">{linkedProject.name}</p>
+                                <p className="text-[9px] font-black uppercase tracking-tighter opacity-40">Project Focus</p>
+                              </div>
+                            </div>
+                            <ArrowLeft className="h-3 w-3 rotate-180 opacity-0 group-hover/project:opacity-100 transition-all translate-x-[-10px] group-hover/project:translate-x-0" />
+                          </div>
+                        </div>
+                      )}
+
+                      {linkedGoal && (
+                        <div className="space-y-3">
+                          <Label className="text-[9px] font-black uppercase tracking-widest opacity-40">Strategic Objective</Label>
+                          <div className="flex items-center gap-3 p-3 rounded-2xl bg-background/50 border border-amber-500/10">
+                            <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center text-amber-500">
+                              <Target className="h-4 w-4" />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-xs font-bold truncate">{linkedGoal.title}</p>
+                              <div className="flex items-center gap-2 mt-0.5">
+                                <div className="flex-1 h-1 bg-muted rounded-full overflow-hidden max-w-[60px]">
+                                  <div className="h-full bg-amber-500" style={{ width: `${linkedGoal.progress}%` }} />
+                                </div>
+                                <span className="text-[8px] font-black text-amber-500">{linkedGoal.progress}%</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                )}
 
                 {/* Visual Status Controller */}
                 <Card className="border-none bg-primary/5 rounded-[2.5rem] p-4">

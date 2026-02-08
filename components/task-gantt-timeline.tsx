@@ -5,9 +5,9 @@ import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Task, Goal } from '@/types';
-import { format, startOfDay, addHours, isSameDay, parseISO, differenceInMinutes } from 'date-fns';
-import { Clock, CheckCircle2, Circle, AlertCircle, ChevronDown, ChevronRight, Filter, Target, TrendingUp } from 'lucide-react';
+import { Task, Goal, TimeEntry } from '@/types';
+import { format, startOfDay, endOfDay, addHours, isSameDay, isBefore, isAfter, parseISO, differenceInMinutes } from 'date-fns';
+import { Clock, CheckCircle2, Circle, AlertCircle, ChevronDown, ChevronRight, Filter, Target, TrendingUp, Zap, History } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -25,7 +25,9 @@ import { cn } from '@/lib/utils';
 interface TaskGanttTimelineProps {
   tasks: Task[];
   goals: Goal[];
+  timeEntries?: TimeEntry[];
   selectedDate: Date;
+  isProjectView?: boolean;
 }
 
 interface GroupedTasks {
@@ -38,7 +40,7 @@ interface GroupedTasks {
   progress: number;
 }
 
-export function TaskGanttTimeline({ tasks, goals, selectedDate }: TaskGanttTimelineProps) {
+export function TaskGanttTimeline({ tasks, goals, timeEntries = [], selectedDate, isProjectView = false }: TaskGanttTimelineProps) {
   const router = useRouter();
   const [currentTime, setCurrentTime] = useState(new Date());
   const [expandedGoals, setExpandedGoals] = useState<Set<string>>(new Set(['ungrouped', ...goals.map(g => g.id)]));
@@ -61,6 +63,8 @@ export function TaskGanttTimeline({ tasks, goals, selectedDate }: TaskGanttTimel
     return () => clearInterval(timer);
   }, []);
 
+
+
   // Generate time slots (24 hours)
   const timeSlots = Array.from({ length: 24 }, (_, i) => {
     const time = addHours(startOfDay(selectedDate), i);
@@ -71,19 +75,36 @@ export function TaskGanttTimeline({ tasks, goals, selectedDate }: TaskGanttTimel
     };
   });
 
-  // Filter tasks for selected date
+  // Filter tasks for selected date (including range overlap)
   const dayTasks = tasks
     .filter(task => {
-      const taskDate = task.scheduledStart || task.deadline;
-      if (!taskDate) return false;
-      const date = typeof taskDate === 'string' ? parseISO(taskDate) : taskDate;
-      if (!isSameDay(date, selectedDate)) return false;
+      const rangeStart = task.scheduledStart || task.createdAt;
+      const rangeEnd = task.deadline || task.scheduledEnd || rangeStart;
+
+      if (!rangeStart || !rangeEnd) return false;
+
+      const rS = typeof rangeStart === 'string' ? parseISO(rangeStart) : rangeStart;
+      const rE = typeof rangeEnd === 'string' ? parseISO(rangeEnd) : rangeEnd;
+
+      const viewStart = startOfDay(selectedDate);
+      const viewEnd = endOfDay(selectedDate);
+
+      // Check if task range overlaps with selected date
+      const isWithinRange = !isAfter(rS, viewEnd) && !isBefore(rE, viewStart);
+
+      if (!isWithinRange) return false;
 
       // Apply filters
       if (filters.goalId !== 'all' && task.goalId !== filters.goalId) return false;
       if (filters.status !== 'all' && task.status !== filters.status) return false;
       if (filters.priority !== 'all' && task.priority !== filters.priority) return false;
-      if (filters.search && !task.title.toLowerCase().includes(filters.search.toLowerCase())) return false;
+      if (filters.search) {
+        const query = filters.search.toLowerCase();
+        const goalTitle = task.goalId ? goals.find(g => String(g.id) === String(task.goalId))?.title.toLowerCase() : '';
+        const matchesTask = task.title.toLowerCase().includes(query) || (task.description || '').toLowerCase().includes(query);
+        const matchesGoal = goalTitle?.includes(query);
+        if (!matchesTask && !matchesGoal) return false;
+      }
       if (filters.tags !== 'all' && !task.tags?.includes(filters.tags)) return false;
 
       return true;
@@ -97,12 +118,25 @@ export function TaskGanttTimeline({ tasks, goals, selectedDate }: TaskGanttTimel
       return timeA.getTime() - timeB.getTime();
     });
 
+  // Sync expanded goals when goals or tasks change
+  useEffect(() => {
+    setExpandedGoals(prev => {
+      const next = new Set(prev);
+      next.add('ungrouped');
+      // Add any new goal IDs that have tasks today
+      dayTasks.forEach(t => {
+        if (t.goalId) next.add(t.goalId);
+      });
+      return next;
+    });
+  }, [dayTasks.length]); // Re-run when day tasks change
+
   // Group tasks if enabled, otherwise create a single flat group
   const groupedTasks: GroupedTasks[] = [];
 
   if (filters.viewMode === 'goals') {
-    // Add ungrouped tasks
-    const ungroupedTasks = dayTasks.filter(t => !t.goalId);
+    // Add ungrouped tasks (tasks with no goal or a goal that isn't in our current view)
+    const ungroupedTasks = dayTasks.filter(t => !t.goalId || !goals.some(g => String(g.id) === String(t.goalId)));
     if (ungroupedTasks.length > 0) {
       const totalDuration = ungroupedTasks.reduce((sum, t) => sum + (t.estimatedDuration || 60), 0);
       const completedDuration = ungroupedTasks
@@ -122,7 +156,7 @@ export function TaskGanttTimeline({ tasks, goals, selectedDate }: TaskGanttTimel
 
     // Add tasks grouped by goal
     goals.forEach(goal => {
-      const goalTasks = dayTasks.filter(t => t.goalId === goal.id);
+      const goalTasks = dayTasks.filter(t => String(t.goalId) === String(goal.id));
       if (goalTasks.length > 0) {
         const totalDuration = goalTasks.reduce((sum, t) => sum + (t.estimatedDuration || 60), 0);
         const completedDuration = goalTasks
@@ -538,7 +572,16 @@ export function TaskGanttTimeline({ tasks, goals, selectedDate }: TaskGanttTimel
                               <div
                                 key={task.id}
                                 className="px-5 py-3 rounded-2xl hover:bg-background/80 transition-all duration-300 cursor-pointer mb-1 group/item"
-                                onClick={() => router.push(`/tasks/${task.id}?fromView=timeline&fromProject=${task.projectId}&fromTab=tasks`)}
+                                onClick={() => {
+                                  const params = new URLSearchParams();
+                                  params.set('fromView', 'timeline');
+                                  if (isProjectView && task.projectId && task.projectId !== 'undefined') {
+                                    params.set('fromProject', task.projectId);
+                                  }
+                                  params.set('fromTab', 'tasks');
+                                  params.set('date', format(selectedDate, 'yyyy-MM-dd'));
+                                  router.push(`/tasks/${task.id}?${params.toString()}`);
+                                }}
                               >
                                 <div className="flex items-center gap-4 ml-6">
                                   <div className={cn(
@@ -604,18 +647,37 @@ export function TaskGanttTimeline({ tasks, goals, selectedDate }: TaskGanttTimel
                   ))}
                 </div>
 
-                {/* Oracle Current Time Indicator */}
+                {/* Current Momentum Beam (Glowing Vertical Halo) */}
                 {currentTimePosition !== null && (
                   <div
-                    className="absolute top-0 bottom-0 z-30 pointer-events-none"
+                    className="absolute top-0 bottom-0 z-40 pointer-events-none flex"
                     style={{ left: `${(currentTimePosition / (24 * 80)) * 100}%` }}
                   >
-                    <div className="h-full w-[2px] bg-gradient-to-b from-primary via-primary/50 to-transparent relative">
-                      <div className="absolute top-0 -left-1.5 p-1 rounded-full bg-primary shadow-[0_0_15px_rgba(var(--primary),0.8)] animate-pulse" />
-                      <div className="absolute top-8 -left-12 px-2 py-1 bg-primary text-primary-foreground text-[8px] font-black uppercase tracking-tighter rounded-md shadow-2xl">
-                        Neural Now
+                    {/* Momentum Shadow (Fading backwards) - Refined and thinned */}
+                    <div className="absolute top-0 bottom-0 right-[100%] w-[60px] bg-gradient-to-r from-transparent to-primary/10" />
+
+                    {/* The Kinetic Line */}
+                    <motion.div
+                      animate={{
+                        opacity: [0.4, 0.8, 0.4],
+                        boxShadow: [
+                          "0 0 8px rgba(255,255,255,0.2)",
+                          "0 0 15px rgba(255,255,255,0.4)",
+                          "0 0 8px rgba(255,255,255,0.2)"
+                        ]
+                      }}
+                      transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
+                      className="h-full w-[1px] bg-white/60 relative z-10"
+                    >
+                      {/* Neural Junction Point */}
+                      <div className="absolute top-0 -left-[2px] w-1.5 h-1.5 rounded-full bg-white shadow-[0_0_10px_#fff]" />
+
+                      {/* Floating ID Badge - Relocated to bottom and made subtle */}
+                      <div className="absolute bottom-4 -left-10 px-2.5 py-0.5 bg-background/80 backdrop-blur-md text-primary text-[7px] font-black uppercase tracking-[0.2em] rounded-full border border-primary/20 flex items-center gap-1.5 whitespace-nowrap opacity-60">
+                        <div className="w-1 h-1 rounded-full bg-primary animate-ping" />
+                        NOW
                       </div>
-                    </div>
+                    </motion.div>
                   </div>
                 )}
 
@@ -626,75 +688,151 @@ export function TaskGanttTimeline({ tasks, goals, selectedDate }: TaskGanttTimel
                     if (!isExpanded) return null;
 
                     return (
-                      <div key={group.goalId || 'flat'} className="relative border-b border-primary/5" style={{ height: `${group.tasks.length * 60}px` }}>
+                      <div key={group.goalId || `group-${groupIndex}`} className="relative border-b border-primary/5" style={{ height: `${group.tasks.length * 60}px` }}>
                         {group.tasks.map((task, taskIndex) => {
-                          const style = getTaskStyle(task);
-                          const taskDate = task.scheduledStart || task.deadline;
-                          if (!taskDate) return null;
-
-                          const date = typeof taskDate === 'string' ? parseISO(taskDate) : taskDate;
-                          const hours = date.getHours();
-                          const minutes = date.getMinutes();
-                          const leftPercent = ((hours + minutes / 60) / 24) * 100;
-                          const widthPercent = ((style.height / 80) / 24) * 100;
-
-                          // Calculate range visualization (Start to Deadline/ScheduledEnd)
-                          const rangeStart = task.scheduledStart;
-                          const rangeEnd = task.deadline || task.scheduledEnd;
-                          let rangeLeft = leftPercent;
-                          let rangeWidth = widthPercent;
-
-                          if (rangeStart && rangeEnd) {
-                            const rS = typeof rangeStart === 'string' ? parseISO(rangeStart) : rangeStart;
-                            const rE = typeof rangeEnd === 'string' ? parseISO(rangeEnd) : rangeEnd;
-                            const rSHours = rS.getHours() + rS.getMinutes() / 60;
-                            const rEHours = rE.getHours() + rE.getMinutes() / 60;
-                            rangeLeft = (rSHours / 24) * 100;
-                            rangeWidth = ((rEHours - rSHours) / 24) * 100;
-                          }
-
                           return (
                             <div key={task.id} className="absolute inset-x-0" style={{ top: `${taskIndex * 60 + 10}px`, height: '42px' }}>
-                              {/* Schedule Window (Faded Range) */}
-                              {rangeWidth > widthPercent && (
-                                <div
-                                  className="absolute h-full rounded-md border border-primary/10 bg-primary/[0.02] border-dashed transition-all duration-500"
+                              {/* Neural Window Indication (Full Lifespan Background) */}
+                              {(() => {
+                                const rangeStart = task.scheduledStart || task.createdAt;
+                                const rangeEnd = task.deadline || task.scheduledEnd || rangeStart;
+
+                                const rS = typeof rangeStart === 'string' ? parseISO(rangeStart) : rangeStart;
+                                const rE = typeof rangeEnd === 'string' ? parseISO(rangeEnd) : rangeEnd;
+
+                                const viewStart = startOfDay(selectedDate);
+                                const viewEnd = endOfDay(selectedDate);
+
+                                // Clamp to today's view
+                                const displayStart = isBefore(rS, viewStart) ? viewStart : rS;
+                                const displayEnd = isAfter(rE, viewEnd) ? viewEnd : rE;
+
+                                if (isAfter(displayStart, displayEnd)) return null;
+
+                                const startHours = displayStart.getHours() + displayStart.getMinutes() / 60;
+                                const endHours = displayEnd.getHours() + displayEnd.getMinutes() / 60;
+
+                                const left = (startHours / 24) * 100;
+                                const width = ((endHours - startHours) / 24) * 100;
+
+                                return (
+                                  <div
+                                    className="absolute inset-y-0 rounded-xl border overflow-hidden transition-all duration-700"
+                                    style={{
+                                      left: `${left}%`,
+                                      width: `${Math.max(width, 0.5)}%`,
+                                      backgroundColor: `color-mix(in srgb, ${group.goalColor}, transparent 98%)`,
+                                      borderColor: `color-mix(in srgb, ${group.goalColor}, transparent 80%)`,
+                                      backgroundImage: `repeating-linear-gradient(-45deg, color-mix(in srgb, ${group.goalColor}, transparent 85%) 0px, color-mix(in srgb, ${group.goalColor}, transparent 85%) 2px, transparent 2px, transparent 12px)`,
+                                      zIndex: 0,
+                                    }}
+                                  >
+                                    <div
+                                      className="absolute top-1 right-2 text-[6px] font-black uppercase tracking-widest opacity-40"
+                                      style={{ color: group.goalColor }}
+                                    >
+                                      {isSameDay(rE, selectedDate) ? 'Junction' : 'Stream'}
+                                    </div>
+                                  </div>
+                                );
+                              })()}
+
+                              {/* Active Task Bar (Specific Scheduled Plan) */}
+                              {task.scheduledStart && isSameDay(new Date(task.scheduledStart), selectedDate) && (
+                                <motion.div
+                                  initial={{ opacity: 0, scaleX: 0 }}
+                                  animate={{ opacity: 1, scaleX: 1 }}
+                                  className={cn(
+                                    "absolute rounded-xl p-2.5 transition-all hover:z-50 cursor-pointer overflow-hidden backdrop-blur-md group/bar border-l-4",
+                                    task.status === 'done' ? "bg-emerald-500/10 border-emerald-500/30" :
+                                      task.status === 'in-progress' ? "bg-primary/10 border-primary/30" : "bg-muted/10 border-muted-foreground/20"
+                                  )}
                                   style={{
-                                    left: `${rangeLeft}%`,
-                                    width: `${rangeWidth}%`,
-                                    zIndex: 0,
+                                    left: `${((new Date(task.scheduledStart).getHours() + new Date(task.scheduledStart).getMinutes() / 60) / 24) * 100}%`,
+                                    width: `${((task.estimatedDuration || 60) / 60 / 24) * 100}%`,
+                                    height: '80%',
+                                    top: '10%',
+                                    borderColor: group.goalColor,
+                                    zIndex: 1,
                                   }}
-                                />
+                                  onClick={() => {
+                                    const params = new URLSearchParams();
+                                    params.set('fromView', 'timeline');
+                                    if (isProjectView && task.projectId && task.projectId !== 'undefined') {
+                                      params.set('fromProject', task.projectId);
+                                    }
+                                    params.set('fromTab', 'timeline');
+                                    params.set('date', format(selectedDate, 'yyyy-MM-dd'));
+                                    router.push(`/tasks/${task.id}?${params.toString()}`);
+                                  }}
+                                >
+                                  <div className="flex items-center gap-2 h-full">
+                                    <Clock className="w-2.5 h-2.5 text-muted-foreground/40 shrink-0" />
+                                    <span className="text-[8px] font-black uppercase tracking-tighter truncate opacity-60">
+                                      {task.title} (Plan)
+                                    </span>
+                                  </div>
+                                </motion.div>
                               )}
 
-                              {/* Active Task Bar (Existing) */}
-                              <motion.div
-                                initial={{ opacity: 0, scaleX: 0 }}
-                                animate={{ opacity: 1, scaleX: 1 }}
-                                className={cn(
-                                  "absolute rounded-2xl p-2.5 transition-all hover:shadow-[0_0_25px_rgba(var(--primary),0.2)] hover:z-50 cursor-pointer overflow-hidden backdrop-blur-md group/bar",
-                                  task.status === 'done' ? "bg-emerald-500/10 border-emerald-500/20 shadow-emerald-500/5" :
-                                    task.status === 'in-progress' ? "bg-primary/10 border-primary/20 shadow-primary/5" : "bg-muted/10 border-primary/5"
-                                )}
-                                style={{
-                                  left: `${leftPercent}%`,
-                                  width: `${Math.max(widthPercent, 5)}%`,
-                                  height: '100%',
-                                  borderLeft: `4px solid ${group.goalColor}`,
-                                  zIndex: 1,
-                                }}
-                                onClick={() => router.push(`/tasks/${task.id}?fromView=timeline&fromProject=${task.projectId}&fromTab=tasks`)}
-                              >
-                                <div className="flex items-center gap-3 h-full px-1">
-                                  <span className="text-[10px] font-black uppercase tracking-tight truncate flex-1 group-hover/bar:text-primary transition-colors">
-                                    {task.title}
-                                  </span>
-                                  {task.status === 'done' && (
-                                    <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                                  )}
-                                </div>
-                                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-white/5 to-transparent skew-x-12 translate-x-full group-hover/bar:translate-x-[-200%] transition-transform duration-1000" />
-                              </motion.div>
+                              {/* Tracked & Manual Logs (Actual Execution Pulse) */}
+                              {timeEntries.filter(e => e.taskId === task.id).map((entry) => {
+                                const start = new Date(entry.startTime);
+                                const end = entry.endTime ? new Date(entry.endTime) : (entry.isRunning ? currentTime : new Date(start.getTime() + (entry.duration || 30) * 60000));
+
+                                const viewStart = startOfDay(selectedDate);
+                                const viewEnd = endOfDay(selectedDate);
+                                if (isAfter(start, viewEnd) || isBefore(end, viewStart)) return null;
+
+                                const dS = isBefore(start, viewStart) ? viewStart : start;
+                                const dE = isAfter(end, viewEnd) ? viewEnd : end;
+
+                                const startHours = dS.getHours() + dS.getMinutes() / 60;
+                                const endHours = dE.getHours() + dE.getMinutes() / 60;
+
+                                const left = (startHours / 24) * 100;
+                                const width = ((endHours - startHours) / 24) * 100;
+
+                                return (
+                                  <motion.div
+                                    key={entry.id}
+                                    initial={{ opacity: 0, y: 5, scale: 0.95 }}
+                                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                                    whileHover={{ scale: 1.02, zIndex: 60 }}
+                                    className={cn(
+                                      "absolute h-[85%] top-[7.5%] rounded-lg border flex items-center px-2 gap-1.5 overflow-hidden transition-all backdrop-blur-md shadow-[0_8px_16px_-6px_rgba(0,0,0,0.2)]",
+                                      entry.isRunning
+                                        ? "ring-2 ring-orange-500/40 shadow-orange-500/20"
+                                        : ""
+                                    )}
+                                    style={{
+                                      left: `${left}%`,
+                                      width: `${Math.max(width, 1.5)}%`,
+                                      zIndex: 10,
+                                      backgroundColor: entry.isRunning
+                                        ? 'rgba(249, 115, 22, 0.7)'
+                                        : `color-mix(in srgb, ${group.goalColor}, transparent 30%)`,
+                                      borderColor: entry.isRunning
+                                        ? 'rgba(251, 146, 60, 0.5)'
+                                        : `color-mix(in srgb, ${group.goalColor}, transparent 60%)`,
+                                      color: entry.isRunning ? '#fff' : 'white', // Ensure text is readable on dark glass
+                                    }}
+                                    title={`${entry.category}: ${entry.description || 'No description'}`}
+                                  >
+                                    {/* Top Edge Highlight for 3D Crystal Effect */}
+                                    <div className="absolute top-0 left-0 right-0 h-[1px] bg-white/30 z-20" />
+
+                                    <Zap className={cn("w-2.5 h-2.5 shrink-0 z-10", entry.isRunning && "animate-pulse text-white")} />
+                                    <span className="text-[7px] font-black uppercase tracking-widest truncate z-10 drop-shadow-sm">
+                                      {entry.category || 'Manual Log'}
+                                    </span>
+
+                                    {entry.isRunning && (
+                                      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer z-0" />
+                                    )}
+                                  </motion.div>
+                                );
+                              })}
                             </div>
                           );
                         })}

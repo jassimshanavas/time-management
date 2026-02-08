@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useState } from 'react';
+import { Suspense, useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { MainLayout } from '@/components/layout/main-layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -27,7 +27,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useStore } from '@/lib/store';
 import { Plus, Trash2, Edit, Calendar as CalendarIcon, LayoutGrid, List, Clock, Sparkles } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { cn } from '@/lib/utils';
 import type { Task, TaskStatus, TaskPriority } from '@/types';
 import { ProtectedRoute } from '@/components/protected-route';
@@ -40,7 +40,7 @@ import { ProjectBadge } from '@/components/projects/project-badge';
 function TasksPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { tasks, addTask, updateTask, deleteTask, userId: currentUserId, goals, projects, selectedProjectId } = useStore();
+  const { tasks, addTask, updateTask, deleteTask, userId: currentUserId, goals, projects, selectedProjectId, timeEntries } = useStore();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
 
@@ -59,6 +59,18 @@ function TasksPageContent() {
     router.push(query ? `/tasks?${query}` : '/tasks');
   };
   const [selectedDate, setSelectedDate] = useState(new Date());
+
+  useEffect(() => {
+    const dateParam = searchParams.get('date');
+    if (dateParam) {
+      try {
+        const parsedDate = parseISO(dateParam);
+        setSelectedDate(parsedDate);
+      } catch (e) {
+        console.error('Failed to parse date from URL:', e);
+      }
+    }
+  }, [searchParams]);
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -186,7 +198,7 @@ function TasksPageContent() {
       if (selectedProjectId === 'personal') {
         filtered = filtered.filter((task) => !task.projectId);
       } else {
-        filtered = filtered.filter((task) => task.projectId === selectedProjectId);
+        filtered = filtered.filter((task) => String(task.projectId) === String(selectedProjectId));
       }
     }
 
@@ -205,7 +217,6 @@ function TasksPageContent() {
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', task.id);
     setDraggedTaskId(task.id);
-    // Add visual feedback
     if (e.currentTarget instanceof HTMLElement) {
       e.currentTarget.style.opacity = '0.5';
     }
@@ -213,7 +224,6 @@ function TasksPageContent() {
 
   const handleDragEnd = (e: React.DragEvent) => {
     setDraggedTaskId(null);
-    // Reset visual feedback
     if (e.currentTarget instanceof HTMLElement) {
       e.currentTarget.style.opacity = '1';
     }
@@ -240,8 +250,6 @@ function TasksPageContent() {
       try {
         await updateTask(taskId, { status: newStatus });
       } catch (error: any) {
-        // Error is already handled in the store
-        // Non-existent tasks are automatically removed
         if (!error?.message?.includes('does not exist')) {
           console.error('Failed to update task status:', error);
           alert('Failed to update task. Please try again.');
@@ -267,7 +275,8 @@ function TasksPageContent() {
           className="group relative flex items-center gap-2.5 sm:gap-4 p-2.5 sm:p-4 rounded-xl border bg-background/40 backdrop-blur-md hover:border-primary/20 hover:shadow-xl transition-all duration-300 cursor-pointer overflow-hidden"
           onClick={(e) => {
             if (!(e.target as HTMLElement).closest('button')) {
-              router.push(`/tasks/${task.id}?fromView=${originView}`);
+              const dateQuery = viewMode === 'timeline' ? `&date=${format(selectedDate, 'yyyy-MM-dd')}` : '';
+              router.push(`/tasks/${task.id}?fromView=${originView}${dateQuery}`);
             }
           }}
         >
@@ -360,7 +369,8 @@ function TasksPageContent() {
         className="group relative overflow-hidden bg-background/60 backdrop-blur-md border-primary/5 hover:border-primary/20 hover:shadow-xl transition-all duration-300 cursor-pointer rounded-2xl"
         onClick={(e) => {
           if (!(e.target as HTMLElement).closest('button')) {
-            router.push(`/tasks/${task.id}?fromView=${originView}`);
+            const dateQuery = viewMode === 'timeline' ? `&date=${format(selectedDate, 'yyyy-MM-dd')}` : '';
+            router.push(`/tasks/${task.id}?fromView=${originView}${dateQuery}`);
           }
         }}
       >
@@ -735,7 +745,32 @@ function TasksPageContent() {
                     Next
                   </Button>
                 </div>
-                <TaskGanttTimeline tasks={tasks} goals={goals} selectedDate={selectedDate} />
+                <TaskGanttTimeline
+                  tasks={filterTasksByStatus()}
+                  goals={(() => {
+                    const currentTasks = filterTasksByStatus();
+                    const referencedGoalIds = new Set(currentTasks.map(t => t.goalId).filter(Boolean));
+                    return goals.filter(g => {
+                      if (selectedProjectId === null) return true;
+                      if (selectedProjectId === 'personal') return !g.projectId || referencedGoalIds.has(String(g.id));
+                      return String(g.projectId) === String(selectedProjectId) || !g.projectId || referencedGoalIds.has(String(g.id));
+                    });
+                  })()}
+                  timeEntries={timeEntries.filter(e => {
+                    if (selectedProjectId === null) return true;
+
+                    if (selectedProjectId === 'personal') {
+                      // Personal entries have no projectId AND (no taskId OR task has no projectId)
+                      const isPersonalTask = e.taskId ? tasks.find(t => String(t.id) === String(e.taskId))?.projectId === undefined : true;
+                      return !e.projectId && isPersonalTask;
+                    }
+
+                    // Project specific entries
+                    const isTaskInProject = e.taskId ? tasks.find(t => String(t.id) === String(e.taskId))?.projectId === String(selectedProjectId) : false;
+                    return String(e.projectId) === String(selectedProjectId) || isTaskInProject;
+                  })}
+                  selectedDate={selectedDate}
+                />
               </div>
             ) : viewMode === 'list' ? (
               <Tabs defaultValue="all" className="w-full">
@@ -747,14 +782,14 @@ function TasksPageContent() {
                 </TabsList>
 
                 <TabsContent value="all" className="space-y-3 mt-6">
-                  {tasks.length === 0 ? (
+                  {filterTasksByStatus().length === 0 ? (
                     <Card>
                       <CardContent className="p-8 text-center">
-                        <p className="text-muted-foreground">No tasks yet. Create your first task!</p>
+                        <p className="text-muted-foreground">No tasks yet in this workspace. Create your first task!</p>
                       </CardContent>
                     </Card>
                   ) : (
-                    tasks.map((task) => <TaskCard key={task.id} task={task} compact originView="list" />)
+                    filterTasksByStatus().map((task) => <TaskCard key={task.id} task={task} compact originView="list" />)
                   )}
                 </TabsContent>
 
