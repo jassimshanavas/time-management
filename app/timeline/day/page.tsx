@@ -375,6 +375,7 @@ function DayTimelineContent() {
                                         <EisenhowerMatrix
                                             tasks={unscheduledTasks}
                                             onScheduleTask={handleScheduleFromMatrix}
+                                            onUpdateTask={updateTask}
                                         />
                                     )}
                                 </CardContent>

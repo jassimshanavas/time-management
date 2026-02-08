@@ -11,10 +11,11 @@ import { motion } from 'framer-motion';
 
 interface EisenhowerMatrixProps {
     tasks: Task[];
-    onScheduleTask: (task: Task, dropTime?: number) => void;
+    onScheduleTask: (task: Task, dropY?: number) => void;
+    onUpdateTask?: (id: string, updates: Partial<Task>) => Promise<void>;
 }
 
-export function EisenhowerMatrix({ tasks, onScheduleTask }: EisenhowerMatrixProps) {
+export function EisenhowerMatrix({ tasks, onScheduleTask, onUpdateTask }: EisenhowerMatrixProps) {
     const quadrants = useMemo(() => {
         const q1: Task[] = []; // Urgent & Important
         const q2: Task[] = []; // Important, Not Urgent
@@ -22,8 +23,8 @@ export function EisenhowerMatrix({ tasks, onScheduleTask }: EisenhowerMatrixProp
         const q4: Task[] = []; // Neither
 
         tasks.forEach(task => {
-            const isUrgent = task.deadline && (isToday(new Date(task.deadline)) || isPast(new Date(task.deadline)));
-            const isImportant = task.priority === 'high' || task.priority === 'medium';
+            const isUrgent = task.isUrgent ?? (task.deadline && (isToday(new Date(task.deadline)) || isPast(new Date(task.deadline))));
+            const isImportant = task.isImportant ?? (task.priority === 'high' || task.priority === 'medium' || !!task.goalId);
 
             if (isUrgent && isImportant) q1.push(task);
             else if (!isUrgent && isImportant) q2.push(task);
@@ -42,9 +43,12 @@ export function EisenhowerMatrix({ tasks, onScheduleTask }: EisenhowerMatrixProp
                 dragSnapToOrigin
                 dragElastic={0.1}
                 dragMomentum={false}
+                onDragStart={(e: any) => {
+                    e.dataTransfer.setData('taskId', task.id);
+                    onScheduleTask(task); // Existing logic might need this to know what started
+                }}
                 onDragEnd={(e, info) => {
-                    // Check if it was dropped over the timeline (this logic will be passed via onScheduleTask)
-                    // We'll use the coordinate to tell the parent where it was dropped
+                    // Check if it was dropped over the timeline
                     onScheduleTask(task, info.point.y);
                 }}
                 className="p-2 bg-background/80 backdrop-blur-md rounded-lg border border-primary/10 hover:border-primary/30 cursor-grab active:cursor-grabbing transition-shadow hover:shadow-lg group/task z-50 relative"
@@ -82,7 +86,9 @@ export function EisenhowerMatrix({ tasks, onScheduleTask }: EisenhowerMatrixProp
         icon: Icon,
         colorClass,
         bgClass,
-        description
+        description,
+        isUrgent,
+        isImportant
     }: {
         title: string;
         tasks: Task[];
@@ -90,8 +96,20 @@ export function EisenhowerMatrix({ tasks, onScheduleTask }: EisenhowerMatrixProp
         colorClass: string;
         bgClass: string;
         description: string;
+        isUrgent: boolean;
+        isImportant: boolean;
     }) => (
-        <div className={cn("flex flex-col h-full rounded-xl p-2.5 transition-all duration-300", bgClass)}>
+        <div
+            className={cn("flex flex-col h-full rounded-xl p-2.5 transition-all duration-300", bgClass)}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={async (e) => {
+                e.preventDefault();
+                const taskId = e.dataTransfer.getData('taskId');
+                if (taskId && onUpdateTask) {
+                    await onUpdateTask(taskId, { isUrgent, isImportant });
+                }
+            }}
+        >
             <div className="flex items-center justify-between mb-2">
                 <div className={cn("flex items-center gap-1.5 font-black text-[9px] uppercase tracking-widest", colorClass)}>
                     <Icon className="h-3 w-3" />
@@ -133,6 +151,8 @@ export function EisenhowerMatrix({ tasks, onScheduleTask }: EisenhowerMatrixProp
                 colorClass="text-red-500"
                 bgClass="bg-red-500/[0.03] border border-red-500/5"
                 description="Do It Now"
+                isUrgent={true}
+                isImportant={true}
             />
             <Quadrant
                 title="Plan"
@@ -141,6 +161,8 @@ export function EisenhowerMatrix({ tasks, onScheduleTask }: EisenhowerMatrixProp
                 colorClass="text-blue-500"
                 bgClass="bg-blue-500/[0.03] border border-blue-500/5"
                 description="Schedule It"
+                isUrgent={false}
+                isImportant={true}
             />
             <Quadrant
                 title="Triage"
@@ -149,6 +171,8 @@ export function EisenhowerMatrix({ tasks, onScheduleTask }: EisenhowerMatrixProp
                 colorClass="text-yellow-500"
                 bgClass="bg-yellow-500/[0.03] border border-yellow-500/5"
                 description="Delegate / Postpone"
+                isUrgent={true}
+                isImportant={false}
             />
             <Quadrant
                 title="Noise"
@@ -157,6 +181,8 @@ export function EisenhowerMatrix({ tasks, onScheduleTask }: EisenhowerMatrixProp
                 colorClass="text-emerald-500"
                 bgClass="bg-emerald-500/[0.03] border border-emerald-500/5"
                 description="Minimize / Avoid"
+                isUrgent={false}
+                isImportant={false}
             />
         </div>
     );

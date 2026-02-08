@@ -66,6 +66,8 @@ export interface Task {
   dependencyIds?: string[]; // Optional: Task dependencies (other task IDs)
   journal?: TaskJournalEntry[]; // Optional: Journal/notes entries
   coverImage?: string; // Optional: Cover image URL for the task
+  isUrgent?: boolean; // For Eisenhower Matrix
+  isImportant?: boolean; // For Eisenhower Matrix
   userId: string; // Required for Firestore security rules
   assignedTo?: string[]; // Optional: List of user IDs assigned to this task
 }

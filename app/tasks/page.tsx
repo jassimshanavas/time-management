@@ -36,6 +36,8 @@ import { TaskTimeline } from '@/components/task-timeline';
 import { TaskGanttTimeline } from '@/components/task-gantt-timeline';
 import { ProjectSelector } from '@/components/projects/project-selector';
 import { ProjectBadge } from '@/components/projects/project-badge';
+import { TaskEisenhowerMatrix } from '@/components/tasks/task-eisenhower-matrix';
+import { Grid2X2 } from 'lucide-react';
 
 function TasksPageContent() {
   const router = useRouter();
@@ -45,10 +47,12 @@ function TasksPageContent() {
   const [editingTask, setEditingTask] = useState<Task | null>(null);
 
   const viewParam = searchParams.get('view');
-  const viewMode: 'list' | 'kanban' | 'timeline' =
-    viewParam === 'kanban' || viewParam === 'timeline' ? (viewParam as 'kanban' | 'timeline') : 'list';
+  const viewMode: 'list' | 'kanban' | 'timeline' | 'eisenhower' =
+    viewParam === 'kanban' || viewParam === 'timeline' || viewParam === 'eisenhower'
+      ? (viewParam as 'kanban' | 'timeline' | 'eisenhower')
+      : 'list';
 
-  const setViewMode = (mode: 'list' | 'kanban' | 'timeline') => {
+  const setViewMode = (mode: 'list' | 'kanban' | 'timeline' | 'eisenhower') => {
     const params = new URLSearchParams(searchParams.toString());
     if (mode === 'list') {
       params.delete('view');
@@ -467,6 +471,15 @@ function TasksPageContent() {
                     <Clock className="h-3.5 w-3.5 sm:mr-1.5" />
                     <span className="hidden sm:inline">Timeline</span>
                   </Button>
+                  <Button
+                    size="sm"
+                    variant={viewMode === 'eisenhower' ? 'default' : 'ghost'}
+                    onClick={() => setViewMode('eisenhower')}
+                    className="h-8 px-2.5 sm:px-4 rounded-lg font-black text-[9px] uppercase tracking-widest transition-all data-[state=active]:shadow-md"
+                  >
+                    <Grid2X2 className="h-3.5 w-3.5 sm:mr-1.5" />
+                    <span className="hidden sm:inline">Matrix</span>
+                  </Button>
                 </div>
 
                 <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
@@ -836,6 +849,15 @@ function TasksPageContent() {
                   )}
                 </TabsContent>
               </Tabs>
+            ) : viewMode === 'eisenhower' ? (
+              <TaskEisenhowerMatrix
+                tasks={filterTasksByStatus()}
+                projects={projects}
+                goals={goals}
+                onUpdateTask={updateTask}
+                onDeleteTask={deleteTask}
+                onEditTask={handleEdit}
+              />
             ) : (
               <div className="flex lg:grid lg:grid-cols-3 gap-4 h-full overflow-x-auto no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0">
                 {/* To Do Column */}
@@ -940,7 +962,7 @@ function TasksPageContent() {
             )}
           </div>
         </MainLayout>
-      </DataLoader>
+      </DataLoader >
     </ProtectedRoute >
   );
 }
