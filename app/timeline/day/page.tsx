@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { MainLayout } from '@/components/layout/main-layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -31,7 +31,7 @@ const HOUR_HEIGHT = 60;
 const STEP_MINUTES = 15;
 const STEP_HEIGHT = (STEP_MINUTES / 60) * HOUR_HEIGHT;
 
-export default function DayTimelinePage() {
+function DayTimelineContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const { tasks, updateTask, selectedProjectId, projects, timeEntries } = useStore();
@@ -553,3 +553,31 @@ function CurrentTimeLine() {
         </div>
     );
 }
+
+// Loading fallback component
+function DayTimelineLoading() {
+    return (
+        <ProtectedRoute>
+            <DataLoader>
+                <MainLayout>
+                    <div className="flex items-center justify-center h-screen">
+                        <div className="flex flex-col items-center gap-4">
+                            <Clock className="h-12 w-12 text-primary animate-pulse" />
+                            <p className="text-sm text-muted-foreground">Loading timeline...</p>
+                        </div>
+                    </div>
+                </MainLayout>
+            </DataLoader>
+        </ProtectedRoute>
+    );
+}
+
+// Default export with Suspense boundary
+export default function DayTimelinePage() {
+    return (
+        <Suspense fallback={<DayTimelineLoading />}>
+            <DayTimelineContent />
+        </Suspense>
+    );
+}
+
