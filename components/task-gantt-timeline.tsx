@@ -6,7 +6,19 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Task, Goal, TimeEntry } from '@/types';
-import { format, startOfDay, endOfDay, addHours, isSameDay, isBefore, isAfter, parseISO, differenceInMinutes, addMinutes } from 'date-fns';
+import {
+  format,
+  startOfDay,
+  endOfDay,
+  isSameDay,
+  isBefore,
+  isAfter,
+  parseISO,
+  addHours,
+  addMinutes,
+  min,
+  max
+} from 'date-fns';
 import { Clock, CheckCircle2, Circle, AlertCircle, ChevronDown, ChevronRight, Filter, Target, TrendingUp, Zap, History, ZoomIn, ZoomOut, RotateCcw, Minimize2, Maximize2, Camera } from 'lucide-react';
 import {
   Select,
@@ -102,10 +114,16 @@ export function TaskGanttTimeline({ tasks, goals, timeEntries = [], selectedDate
       const viewStart = startOfDay(selectedDate);
       const viewEnd = endOfDay(selectedDate);
 
-      // Check if task range overlaps with selected date
-      const isWithinRange = !isAfter(rS, viewEnd) && !isBefore(rE, viewStart);
+      // Check if task is overdue (due before or during current time)
+      const taskEndInput = task.deadline || task.scheduledEnd;
+      const taskEndParsed = taskEndInput ? (typeof taskEndInput === 'string' ? parseISO(taskEndInput) : taskEndInput) : null;
+      const isTaskCurrentlyOverdue = task.status !== 'done' && taskEndParsed && isBefore(taskEndParsed, currentTime);
 
-      if (!isWithinRange) return false;
+      // Show if scheduled for this day OR if it falls within the overdue window (from due date until now)
+      const isScheduledOnThisDay = (isBefore(rS, viewEnd) && isAfter(rE, viewStart));
+      const isOverdueOnThisDay = isTaskCurrentlyOverdue && taskEndParsed && isAfter(viewEnd, taskEndParsed) && isBefore(taskEndParsed, currentTime);
+
+      if (!isScheduledOnThisDay && !isOverdueOnThisDay) return false;
 
       // Apply filters
       if (filters.goalId !== 'all' && task.goalId !== filters.goalId) return false;
@@ -325,6 +343,18 @@ export function TaskGanttTimeline({ tasks, goals, timeEntries = [], selectedDate
             transparent 5px
           );
           background-size: 8px 8px;
+        }
+        .overdue-striped {
+          background-color: rgba(239, 68, 68, 0.05) !important;
+          background-image: repeating-linear-gradient(
+            45deg,
+            rgba(239, 68, 68, 0.2) 0px,
+            rgba(239, 68, 68, 0.2) 1px,
+            transparent 1px,
+            transparent 8px
+          ) !important;
+          background-size: 11.31px 11.31px;
+          border: 1px dashed rgba(239, 68, 68, 0.3) !important;
         }
       `}} />
       {/* Premium Header with View Switcher */}
@@ -946,10 +976,46 @@ export function TaskGanttTimeline({ tasks, goals, timeEntries = [], selectedDate
                               const viewStart = startOfDay(selectedDate);
                               const viewEnd = endOfDay(selectedDate);
 
-                              const displayStart = isBefore(rS, viewStart) ? viewStart : rS;
-                              const displayEnd = isAfter(rE, viewEnd) ? viewEnd : rE;
+                              // Check if task is overdue (deadline/scheduled end passed before or during today)
+                              const taskEnd = task.deadline || task.scheduledEnd;
+                              const tE = taskEnd ? (typeof taskEnd === 'string' ? parseISO(taskEnd) : taskEnd) : null;
+                              const isOverdueNow = task.status !== 'done' && tE && isBefore(tE, currentTime);
 
-                              if (isAfter(displayStart, displayEnd)) return null;
+                              // Calculate Overdue Stripe overlap with the selected Date
+                              let overdueStripeLeft = 0;
+                              let overdueStripeWidth = 0;
+                              let showOverdueStripe = false;
+
+                              if (isOverdueNow) {
+                                // The stripe should start from the beginning of the selected day or the task's end, whichever is later,
+                                // and end at the current time or the end of the selected day, whichever is earlier.
+                                const stripeStart = max([viewStart, tE!]);
+                                const stripeEnd = min([viewEnd, currentTime]);
+
+                                if (isBefore(stripeStart, stripeEnd)) {
+                                  showOverdueStripe = true;
+                                  const hsStart = stripeStart.getHours() + stripeStart.getMinutes() / 60;
+                                  const hsEnd = stripeEnd.getHours() + stripeEnd.getMinutes() / 60;
+                                  overdueStripeLeft = (hsStart / 24) * 100;
+                                  overdueStripeWidth = ((hsEnd - hsStart) / 24) * 100;
+                                }
+                              }
+
+                              let displayStart = isBefore(rS, viewStart) ? viewStart : rS;
+                              let displayEnd = isAfter(rE, viewEnd) ? viewEnd : rE;
+
+                              // If task has no overlap with today but is overdue from past, we still need to show it in the timeline
+                              const isTaskOverdueFromPast = task.status !== 'done' && tE &&
+                                isBefore(tE, viewStart) && // Task ended before the start of the current view day
+                                isBefore(tE, currentTime); // Task ended before the current time
+
+                              if (isTaskOverdueFromPast) {
+                                // For visualization purposes of the "row", we use the overdue period available today
+                                displayStart = viewStart;
+                                displayEnd = isBefore(currentTime, viewEnd) ? currentTime : viewEnd;
+                              } else if (isAfter(displayStart, displayEnd)) {
+                                return null;
+                              }
 
                               const startHours = displayStart.getHours() + displayStart.getMinutes() / 60;
                               const endHours = displayEnd.getHours() + displayEnd.getMinutes() / 60;
@@ -959,7 +1025,7 @@ export function TaskGanttTimeline({ tasks, goals, timeEntries = [], selectedDate
                               // Specific Scheduled Bar metrics
                               let scheduledLeft = left;
                               let scheduledWidth = width;
-                              let isCurrentlyScheduled = false;
+                              let isCurrentlyScheduled = isTaskOverdueFromPast;
 
                               if (task.scheduledStart) {
                                 const sStart = typeof task.scheduledStart === 'string' ? parseISO(task.scheduledStart) : task.scheduledStart;
@@ -979,11 +1045,23 @@ export function TaskGanttTimeline({ tasks, goals, timeEntries = [], selectedDate
                                 }
                               }
 
+
                               return (
                                 <div key={task.id} className="absolute inset-x-0" style={{ top: `${taskTop}px`, height: '42px' }}>
+                                  {/* Overdue Background Track - Continuous from due until now */}
+                                  {showOverdueStripe && (
+                                    <div
+                                      className="absolute inset-y-1 overdue-striped rounded-xl opacity-30 z-0 pointer-events-none"
+                                      style={{
+                                        left: `${overdueStripeLeft}%`,
+                                        width: `${overdueStripeWidth}%`,
+                                      }}
+                                    />
+                                  )}
+
                                   {/* Neural Window Indication - The broader context shadow */}
                                   <div
-                                    className="absolute inset-y-0 rounded-xl border overflow-hidden transition-all duration-700 opacity-40 group-hover:opacity-60"
+                                    className="absolute inset-y-0 rounded-xl border overflow-hidden transition-all duration-700 opacity-20 group-hover:opacity-40"
                                     style={{
                                       left: `${left}%`,
                                       width: `${Math.max(width, 0.5)}%`,
@@ -1012,7 +1090,8 @@ export function TaskGanttTimeline({ tasks, goals, timeEntries = [], selectedDate
                                       className={cn(
                                         "absolute rounded-xl p-2.5 transition-all hover:z-50 cursor-pointer overflow-hidden backdrop-blur-md group/bar border-l-4",
                                         task.status === 'done' ? "bg-emerald-500/10 border-emerald-500/30 shadow-[0_0_15px_rgba(16,185,129,0.1)]" :
-                                          task.status === 'in-progress' ? "bg-primary/10 border-primary/30 shadow-[0_0_15px_rgba(59,130,246,0.1)]" : "bg-muted/10 border-muted-foreground/20"
+                                          task.status === 'in-progress' ? "bg-primary/10 border-primary/30 shadow-[0_0_15px_rgba(59,130,246,0.1)]" :
+                                            isOverdueNow ? "bg-red-500/10 border-red-500/30" : "bg-muted/10 border-muted-foreground/20"
                                       )}
                                       style={{
                                         left: `${scheduledLeft}%`,

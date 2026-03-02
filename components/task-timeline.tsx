@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Task } from '@/types';
-import { format, startOfDay, addHours, isSameDay, parseISO } from 'date-fns';
+import { format, startOfDay, endOfDay, addHours, isSameDay, parseISO, isBefore, isAfter, min, max } from 'date-fns';
 import { Clock, CheckCircle2, Circle, AlertCircle } from 'lucide-react';
 
 interface TaskTimelineProps {
@@ -16,7 +16,7 @@ interface TaskTimelineProps {
 export function TaskTimeline({ tasks, selectedDate }: TaskTimelineProps) {
   const router = useRouter();
   const [currentTime, setCurrentTime] = useState(new Date());
-  
+
   // Update current time every minute
   useEffect(() => {
     const timer = setInterval(() => {
@@ -24,7 +24,7 @@ export function TaskTimeline({ tasks, selectedDate }: TaskTimelineProps) {
     }, 60000);
     return () => clearInterval(timer);
   }, []);
-  
+
   // Generate time slots (24 hours)
   const timeSlots = Array.from({ length: 24 }, (_, i) => {
     const time = addHours(startOfDay(selectedDate), i);
@@ -34,15 +34,18 @@ export function TaskTimeline({ tasks, selectedDate }: TaskTimelineProps) {
       label: format(time, 'HH:mm')
     };
   });
-  
+
   // Filter tasks for selected date and sort by time
   const dayTasks = tasks
     .filter(task => {
-      // Use scheduledStart if available, otherwise deadline
       const taskDate = task.scheduledStart || task.deadline;
       if (!taskDate) return false;
       const date = typeof taskDate === 'string' ? parseISO(taskDate) : taskDate;
-      return isSameDay(date, selectedDate);
+      const isVisibleDay = isSameDay(date, selectedDate);
+      const isOverdueOnThisDay = task.status !== 'done' &&
+        isBefore(date, endOfDay(selectedDate)) &&
+        isBefore(date, currentTime);
+      return isVisibleDay || isOverdueOnThisDay;
     })
     .sort((a, b) => {
       const dateA = a.scheduledStart || a.deadline;
@@ -52,19 +55,24 @@ export function TaskTimeline({ tasks, selectedDate }: TaskTimelineProps) {
       const timeB = typeof dateB === 'string' ? parseISO(dateB) : dateB;
       return timeA.getTime() - timeB.getTime();
     });
-  
+
   // Get task position and height based on time
   const getTaskStyle = (task: Task) => {
     const taskDate = task.scheduledStart || task.deadline;
     if (!taskDate) return { top: 0, height: 60 };
-    
+
     const date = typeof taskDate === 'string' ? parseISO(taskDate) : taskDate;
-    const hours = date.getHours();
-    const minutes = date.getMinutes();
-    
+    const isOverdueFromPast = task.status !== 'done' &&
+      isBefore(date, startOfDay(selectedDate)) &&
+      isBefore(date, currentTime);
+
+    const effectiveDate = isOverdueFromPast ? startOfDay(selectedDate) : date;
+    const hours = effectiveDate.getHours();
+    const minutes = effectiveDate.getMinutes();
+
     // Each hour slot is 80px, calculate position
     const top = (hours * 80) + (minutes / 60 * 80);
-    
+
     // Calculate height based on duration if available
     let height = 60; // Default task height
     if (task.estimatedDuration) {
@@ -74,21 +82,21 @@ export function TaskTimeline({ tasks, selectedDate }: TaskTimelineProps) {
       const durationMinutes = (endDate.getTime() - date.getTime()) / 60000;
       height = Math.max(60, (durationMinutes / 60) * 80);
     }
-    
+
     return { top, height };
   };
-  
+
   // Get current time indicator position
   const getCurrentTimePosition = () => {
     if (!isSameDay(currentTime, selectedDate)) return null;
-    
+
     const hours = currentTime.getHours();
     const minutes = currentTime.getMinutes();
     return (hours * 80) + (minutes / 60 * 80);
   };
-  
+
   const currentTimePosition = getCurrentTimePosition();
-  
+
   // Get status color
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -100,7 +108,7 @@ export function TaskTimeline({ tasks, selectedDate }: TaskTimelineProps) {
         return 'border-slate-600 bg-slate-800/50';
     }
   };
-  
+
   // Get priority color
   const getPriorityColor = (priority: string) => {
     switch (priority) {
@@ -112,118 +120,167 @@ export function TaskTimeline({ tasks, selectedDate }: TaskTimelineProps) {
         return 'bg-blue-500/20 text-blue-400 border-blue-500/50';
     }
   };
-  
+
   return (
-    <Card className="overflow-hidden bg-slate-900 border-slate-800">
-      <CardContent className="p-0">
-        <div className="flex h-[600px]">
-          {/* Time labels */}
-          <div className="w-20 bg-slate-950 border-r border-slate-800 flex-shrink-0">
-            {timeSlots.map((slot) => (
-              <div
-                key={slot.hour}
-                className="h-20 border-b border-slate-800 flex items-start justify-end pr-3 pt-1"
-              >
-                <span className="text-xs text-slate-500 font-medium">{slot.label}</span>
-              </div>
-            ))}
-          </div>
-          
-          {/* Timeline grid */}
-          <div className="flex-1 relative overflow-y-auto bg-slate-900">
-            {/* Hour grid lines */}
-            {timeSlots.map((slot) => (
-              <div
-                key={slot.hour}
-                className="h-20 border-b border-slate-800/50"
-              />
-            ))}
-            
-            {/* Current time indicator */}
-            {currentTimePosition !== null && (
-              <div
-                className="absolute left-0 right-0 z-20 pointer-events-none"
-                style={{ top: `${currentTimePosition}px` }}
-              >
-                <div className="flex items-center">
-                  <div className="w-3 h-3 rounded-full bg-blue-500 -ml-1.5" />
-                  <div className="flex-1 h-0.5 bg-blue-500" />
+    <div className="space-y-4">
+      <style dangerouslySetInnerHTML={{
+        __html: `
+        .overdue-striped {
+          background-color: rgba(239, 68, 68, 0.05) !important;
+          background-image: repeating-linear-gradient(
+            45deg,
+            rgba(239, 68, 68, 0.2) 0px,
+            rgba(239, 68, 68, 0.2) 1px,
+            transparent 1px,
+            transparent 8px
+          ) !important;
+          background-size: 11.31px 11.31px;
+          border: 1px dashed rgba(239, 68, 68, 0.3) !important;
+        }
+      `}} />
+      <Card className="overflow-hidden bg-slate-900 border-slate-800">
+        <CardContent className="p-0">
+          <div className="flex h-[600px]">
+            {/* Time labels */}
+            <div className="w-20 bg-slate-950 border-r border-slate-800 flex-shrink-0">
+              {timeSlots.map((slot) => (
+                <div
+                  key={slot.hour}
+                  className="h-20 border-b border-slate-800 flex items-start justify-end pr-3 pt-1"
+                >
+                  <span className="text-xs text-slate-500 font-medium">{slot.label}</span>
                 </div>
-              </div>
-            )}
-            
-            {/* Tasks */}
-            <div className="absolute inset-0 px-4">
-              {dayTasks.map((task, index) => {
-                const style = getTaskStyle(task);
-                return (
-                  <div
-                    key={task.id}
-                    className={`absolute left-4 right-4 rounded-lg border-l-4 p-3 transition-all hover:shadow-lg hover:scale-[1.02] cursor-pointer ${getStatusColor(task.status)}`}
-                    style={{
-                      top: `${style.top}px`,
-                      minHeight: `${style.height}px`,
-                      zIndex: 10
-                    }}
-                    onClick={() => router.push(`/tasks/${task.id}?fromView=timeline`)}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          {task.status === 'done' ? (
-                            <CheckCircle2 className="w-4 h-4 text-green-400 flex-shrink-0" />
-                          ) : task.status === 'in-progress' ? (
-                            <Circle className="w-4 h-4 text-blue-400 flex-shrink-0" />
-                          ) : (
-                            <Circle className="w-4 h-4 text-slate-500 flex-shrink-0" />
-                          )}
-                          <h4 className="text-sm font-semibold text-white truncate">
-                            {task.title}
-                          </h4>
-                        </div>
-                        
-                        {task.description && (
-                          <p className="text-xs text-slate-400 line-clamp-2 ml-6">
-                            {task.description}
-                          </p>
-                        )}
-                        
-                        <div className="flex items-center gap-2 mt-2 ml-6">
-                          <div className="flex items-center gap-1 text-xs text-slate-500">
-                            <Clock className="w-3 h-3" />
-                            {(() => {
-                              const taskDate = task.scheduledStart || task.deadline;
-                              if (!taskDate) return 'No time';
-                              const date = typeof taskDate === 'string' ? parseISO(taskDate) : taskDate;
-                              return format(date, 'HH:mm');
-                            })()}
-                          </div>
-                          
-                          {task.priority && (
-                            <Badge variant="outline" className={`text-xs px-1.5 py-0 ${getPriorityColor(task.priority)}`}>
-                              {task.priority}
-                            </Badge>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-              
-              {/* No tasks message */}
-              {dayTasks.length === 0 && (
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="text-center">
-                    <AlertCircle className="w-12 h-12 mx-auto mb-3 text-slate-600" />
-                    <p className="text-slate-500 text-sm">No tasks scheduled for this day</p>
+              ))}
+            </div>
+
+            {/* Timeline grid */}
+            <div className="flex-1 relative overflow-y-auto bg-slate-900">
+              {/* Hour grid lines */}
+              {timeSlots.map((slot) => (
+                <div
+                  key={slot.hour}
+                  className="h-20 border-b border-slate-800/50"
+                />
+              ))}
+
+              {/* Current time indicator */}
+              {currentTimePosition !== null && (
+                <div
+                  className="absolute left-0 right-0 z-20 pointer-events-none"
+                  style={{ top: `${currentTimePosition}px` }}
+                >
+                  <div className="flex items-center">
+                    <div className="w-3 h-3 rounded-full bg-blue-500 -ml-1.5" />
+                    <div className="flex-1 h-0.5 bg-blue-500" />
                   </div>
                 </div>
               )}
+
+              {/* Tasks */}
+              <div className="absolute inset-0 px-4">
+                {dayTasks.map((task, index) => {
+                  const style = getTaskStyle(task);
+                  const taskDate = task.scheduledStart || task.deadline;
+                  const d = taskDate ? (typeof taskDate === 'string' ? parseISO(taskDate) : taskDate) : null;
+                  const isOverdue = task.status !== 'done' && d && isBefore(d, currentTime);
+
+                  let stripeTop = 0;
+                  let stripeHeight = 0;
+                  let showStripe = false;
+
+                  if (isOverdue) {
+                    const viewStart = startOfDay(selectedDate);
+                    const viewEnd = endOfDay(selectedDate);
+                    const startOfVisibleOverdue = max([d!, viewStart]);
+                    const endOfVisibleOverdue = min([currentTime, viewEnd]);
+
+                    if (isBefore(startOfVisibleOverdue, endOfVisibleOverdue)) {
+                      showStripe = true;
+                      stripeTop = (startOfVisibleOverdue.getHours() * 80) + (startOfVisibleOverdue.getMinutes() / 60 * 80);
+                      const endY = (endOfVisibleOverdue.getHours() * 80) + (endOfVisibleOverdue.getMinutes() / 60 * 80);
+                      stripeHeight = Math.max(2, endY - stripeTop);
+                    }
+                  }
+
+                  return (
+                    <React.Fragment key={task.id}>
+                      {showStripe && (
+                        <div
+                          className="absolute left-0 right-0 overdue-striped pointer-events-none z-0"
+                          style={{
+                            top: `${stripeTop}px`,
+                            height: `${stripeHeight}px`,
+                            opacity: 0.25
+                          }}
+                        />
+                      )}
+                      <div
+                        className={`absolute left-4 right-4 rounded-lg border-l-4 p-3 transition-all hover:shadow-lg hover:scale-[1.02] cursor-pointer ${isOverdue ? 'bg-red-500/10 border-red-500/30' : getStatusColor(task.status)}`}
+                        style={{
+                          top: `${style.top}px`,
+                          minHeight: `${style.height}px`,
+                          zIndex: 10
+                        }}
+                        onClick={() => router.push(`/tasks/${task.id}?fromView=timeline`)}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              {task.status === 'done' ? (
+                                <CheckCircle2 className="w-4 h-4 text-green-400 flex-shrink-0" />
+                              ) : task.status === 'in-progress' ? (
+                                <Circle className="w-4 h-4 text-blue-400 flex-shrink-0" />
+                              ) : (
+                                <Circle className="w-4 h-4 text-slate-500 flex-shrink-0" />
+                              )}
+                              <h4 className="text-sm font-semibold text-white truncate">
+                                {task.title}
+                              </h4>
+                            </div>
+
+                            {task.description && (
+                              <p className="text-xs text-slate-400 line-clamp-2 ml-6">
+                                {task.description}
+                              </p>
+                            )}
+
+                            <div className="flex items-center gap-2 mt-2 ml-6">
+                              <div className="flex items-center gap-1 text-xs text-slate-500">
+                                <Clock className="w-3 h-3" />
+                                {(() => {
+                                  if (!taskDate) return 'No time';
+                                  const date = typeof taskDate === 'string' ? parseISO(taskDate) : taskDate;
+                                  return format(date, 'HH:mm');
+                                })()}
+                              </div>
+
+                              {task.priority && (
+                                <Badge variant="outline" className={`text-xs px-1.5 py-0 ${getPriorityColor(task.priority)}`}>
+                                  {task.priority}
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </React.Fragment>
+                  );
+                })}
+
+                {/* No tasks message */}
+                {dayTasks.length === 0 && (
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="text-center">
+                      <AlertCircle className="w-12 h-12 mx-auto mb-3 text-slate-600" />
+                      <p className="text-slate-500 text-sm">No tasks scheduled for this day</p>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
-        </div>
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
+    </div>
   );
 }

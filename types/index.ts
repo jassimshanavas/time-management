@@ -68,6 +68,8 @@ export interface Task {
   coverImage?: string; // Optional: Cover image URL for the task
   isUrgent?: boolean; // For Eisenhower Matrix
   isImportant?: boolean; // For Eisenhower Matrix
+  lastStatusChange?: Date; // Tracking task aging
+  energyLevel?: 'low' | 'medium' | 'high'; // For energy-state filtering
   userId: string; // Required for Firestore security rules
   assignedTo?: string[]; // Optional: List of user IDs assigned to this task
 }

@@ -6,6 +6,8 @@ export interface Task {
   status: TaskStatus;
   createdAt?: Date;
   updatedAt?: Date;
+  lastStatusChange?: Date;
+  energyLevel?: 'low' | 'medium' | 'high';
 }
 
 export interface Column {
