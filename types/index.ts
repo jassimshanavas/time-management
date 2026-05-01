@@ -146,9 +146,22 @@ export interface TimeEntry {
   notes?: string;
 }
 
+export interface SleepEntry {
+  id: string;
+  userId: string;
+  bedtime: Date;          // When they went to bed
+  wakeTime: Date;         // When they woke up
+  durationMins: number;   // Calculated: wakeTime - bedtime in minutes
+  quality: 1 | 2 | 3 | 4 | 5; // 1=terrible, 5=excellent
+  mood?: 'great' | 'good' | 'okay' | 'tired' | 'awful'; // Wake-up mood
+  notes?: string;
+  date: Date;             // The morning date this sleep record belongs to
+  createdAt: Date;
+}
+
 export interface TimelineEvent {
   id: string;
-  type: 'task' | 'reminder' | 'habit' | 'time-entry';
+  type: 'task' | 'reminder' | 'habit' | 'time-entry' | 'sleep';
   title: string;
   timestamp: Date;
   metadata?: any;

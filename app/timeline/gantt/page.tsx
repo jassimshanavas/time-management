@@ -26,6 +26,11 @@ import {
   Clock,
   Crosshair,
   Plus,
+  Moon,
+  Star,
+  Sunrise,
+  Trash2,
+  X,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ProtectedRoute } from '@/components/protected-route';
@@ -46,6 +51,13 @@ import {
 } from '@/components/ui/tooltip';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
 import { DateRange } from 'react-day-picker';
 import {
   format,
@@ -100,7 +112,7 @@ function priorityDot(priority: string) {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 export default function GanttViewPage() {
-  const { tasks, projects, timeEntries } = useStore();
+  const { tasks, projects, timeEntries, sleepEntries, addSleepEntry, deleteSleepEntry } = useStore();
 
   const [currentDate, setCurrentDate] = useState(new Date());
   const [dateRangeSelection, setDateRangeSelection] = useState<DateRange | undefined>({
@@ -117,8 +129,27 @@ export default function GanttViewPage() {
   const [hoveredTask, setHoveredTask] = useState<{ task: any; loggedMins: number; util: number; plannedStart: Date; project: any } | null>(null);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
 
+  // ── Sleep modal state ────────────────────────────────────────────────────────
+  const [showSleepModal, setShowSleepModal] = useState(false);
+  const [sleepForm, setSleepForm] = useState({
+    bedtimeDate: format(new Date(), 'yyyy-MM-dd'),
+    bedtimeTime: '23:00',
+    wakeDate: format(new Date(), 'yyyy-MM-dd'),
+    wakeTime: '07:00',
+    quality: 3 as 1 | 2 | 3 | 4 | 5,
+    mood: 'okay' as 'great' | 'good' | 'okay' | 'tired' | 'awful',
+    notes: '',
+  });
+  const [sleepSaving, setSleepSaving] = useState(false);
+  const [hoveredSleep, setHoveredSleep] = useState<{ entry: any } | null>(null);
+
   const timelineRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // col width per slot ─ wider for readability
   const COL_PX = viewMode === 'day' ? 80 : 100;
@@ -179,6 +210,14 @@ export default function GanttViewPage() {
     }
   }), [tasks, selectedProjectId, dateRange]);
 
+  const filteredSleepEntries = useMemo(() => sleepEntries.filter(entry => {
+    const bed = new Date(entry.bedtime);
+    const wake = new Date(entry.wakeTime);
+    try {
+      return areIntervalsOverlapping({ start: bed, end: wake }, dateRange);
+    } catch { return false; }
+  }), [sleepEntries, dateRange]);
+
   const tasksByProject = useMemo(() => {
     const grouped: Record<string, typeof tasks> = {};
     filteredTasks.forEach(task => {
@@ -186,8 +225,12 @@ export default function GanttViewPage() {
       if (!grouped[key]) grouped[key] = [];
       grouped[key].push(task);
     });
+    // Ensure "Personal" shows up if we have sleep data even with no personal tasks
+    if (filteredSleepEntries.length > 0 && !grouped['__none__']) {
+      grouped['__none__'] = [];
+    }
     return grouped;
-  }, [filteredTasks]);
+  }, [filteredTasks, filteredSleepEntries]);
 
   const getProject = (id: string) => id === '__none__' ? null : projects.find(p => p.id === id);
 
@@ -222,6 +265,57 @@ export default function GanttViewPage() {
     const delayStartPct = Math.min(deadlinePct, nowPct);
     const delayWidthPct = isOverdue ? Math.max(0, nowPct - deadlinePct) : 0;
     return { start: startPct, plannedWidth: plannedPct, actualWidth: actualPct, deadlinePct, isOverrun: actualEnd > plannedEnd && actualEnd <= dateRange.end, isDelayed: isOverdue, delayStart: delayStartPct, delayWidth: delayWidthPct };
+  };
+
+  // ── Sleep helpers ────────────────────────────────────────────────────────────
+  const getSleepBarPositions = (entry: any) => {
+    const total = dateRange.end.getTime() - dateRange.start.getTime();
+    if (total <= 0) return { start: 0, width: 0 };
+    const toRange = (d: Date) => Math.max(0, Math.min(100, ((d.getTime() - dateRange.start.getTime()) / total) * 100));
+    const startPct = toRange(new Date(entry.bedtime));
+    const endPct = toRange(new Date(entry.wakeTime));
+    return { start: startPct, width: Math.max(0, endPct - startPct) };
+  };
+
+  const sleepQualityLabel = (q: number) => ['', 'Terrible', 'Poor', 'Okay', 'Good', 'Excellent'][q] || '';
+  const sleepMoodEmoji = (m: string) => ({ great: '😁', good: '🙂', okay: '😐', tired: '😴', awful: '😩' }[m] || '😐');
+
+  const handleSaveSleep = async () => {
+    const bedtime = new Date(`${sleepForm.bedtimeDate}T${sleepForm.bedtimeTime}:00`);
+    const wakeTime = new Date(`${sleepForm.wakeDate}T${sleepForm.wakeTime}:00`);
+    if (isNaN(bedtime.getTime()) || isNaN(wakeTime.getTime())) return;
+    if (wakeTime <= bedtime) {
+      // Handle next-day wake: if wakeTime < bedtime on same day, add 1 day
+      wakeTime.setDate(wakeTime.getDate() + 1);
+    }
+    const durationMins = Math.round((wakeTime.getTime() - bedtime.getTime()) / 60000);
+    setSleepSaving(true);
+    try {
+      await addSleepEntry({
+        userId: '', // filled by store
+        bedtime,
+        wakeTime,
+        durationMins,
+        quality: sleepForm.quality,
+        mood: sleepForm.mood,
+        notes: sleepForm.notes || undefined,
+        date: wakeTime,
+        createdAt: new Date(),
+      });
+      setShowSleepModal(false);
+      setSleepForm(f => ({
+        ...f,
+        bedtimeDate: format(new Date(), 'yyyy-MM-dd'),
+        bedtimeTime: '23:00',
+        wakeDate: format(new Date(), 'yyyy-MM-dd'),
+        wakeTime: '07:00',
+        quality: 3,
+        mood: 'okay',
+        notes: '',
+      }));
+    } finally {
+      setSleepSaving(false);
+    }
   };
 
   // ── Stats ───────────────────────────────────────────────────────────────────
@@ -521,6 +615,15 @@ export default function GanttViewPage() {
                     </Select>
                   </div>
 
+                  {/* Log Sleep button */}
+                  <Button
+                    onClick={() => setShowSleepModal(true)}
+                    className="flex items-center gap-2 h-10 px-4 rounded-2xl bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 hover:border-indigo-500/40 text-indigo-400 hover:text-indigo-300 transition-all text-[10px] font-black uppercase tracking-widest whitespace-nowrap shadow-none"
+                  >
+                    <Moon className="h-3.5 w-3.5" />
+                    Log Sleep
+                  </Button>
+
                 </CardContent>
               </Card>
             </motion.div>
@@ -538,6 +641,7 @@ export default function GanttViewPage() {
                     </div>
                   ), label: 'Overrun'
                 },
+                { swatch: <div className="h-3 w-10 rounded-full bg-gradient-to-r from-indigo-500 via-violet-500 to-purple-500 opacity-80" />, label: 'Sleep' },
               ].map((l, i) => (
                 <div key={i} className="flex items-center gap-2 group/l">
                   {l.swatch}
@@ -660,6 +764,29 @@ export default function GanttViewPage() {
                         })}
                       </div>
                     </div>
+
+                    {/* ── Global sleep zones (slanted stripes over the entire timeline) ── */}
+                    {viewMode === 'day' && (
+                      <div className="absolute inset-y-0 pointer-events-none overflow-hidden" style={{ left: SIDEBAR_PX, right: 0, zIndex: 0 }}>
+                        {filteredSleepEntries.map(entry => {
+                          const sleepPos = getSleepBarPositions(entry);
+                          if (sleepPos.width <= 0) return null;
+                          return (
+                            <div
+                              key={`global-sleep-${entry.id}`}
+                              className="absolute inset-y-0"
+                              style={{
+                                left: `${sleepPos.start}%`,
+                                width: `${sleepPos.width}%`,
+                                background: `repeating-linear-gradient(135deg, rgba(99,102,241,0.06) 0, rgba(99,102,241,0.06) 12px, transparent 12px, transparent 24px)`,
+                                borderLeft: '1px solid rgba(129,140,248,0.1)',
+                                borderRight: '1px solid rgba(129,140,248,0.1)',
+                              }}
+                            />
+                          );
+                        })}
+                      </div>
+                    )}
 
                     {/* ── Task rows ─────────────────────────────────────── */}
                     {Object.keys(tasksByProject).length === 0 ? (
@@ -934,9 +1061,298 @@ export default function GanttViewPage() {
                                 </motion.div>
                               );
                             })}
+
+                            {/* ── Sleep rows (only in Personal section) ────── */}
+                            {projectId === '__none__' && filteredSleepEntries.length > 0 && (
+                              <div className="border-t border-indigo-500/10">
+                                {/* Sleep sub-header */}
+                                <div
+                                  className="border-b border-indigo-500/10 bg-gradient-to-r from-indigo-500/5 to-transparent"
+                                  style={{ display: 'grid', gridTemplateColumns: `${SIDEBAR_PX}px 1fr`, width: contentWidth }}
+                                >
+                                  <div className="shrink-0 px-5 py-1.5 sticky left-0 bg-background/90 backdrop-blur-xl z-40 border-r border-indigo-500/10 flex items-center gap-2">
+                                    <Moon className="h-3 w-3 text-indigo-400/70" />
+                                    <span className="text-[9px] font-black uppercase tracking-[0.2em] text-indigo-400/60">Sleep</span>
+                                    <Badge variant="outline" className="ml-auto text-[8px] font-black border-indigo-500/20 bg-indigo-500/8 text-indigo-400/70 py-0 h-4 shrink-0">
+                                      {filteredSleepEntries.length}
+                                    </Badge>
+                                  </div>
+                                  <div style={{ display: 'grid', gridTemplateColumns: `repeat(${timeSlots.length}, minmax(${COL_PX * zoomLevel}px, 1fr))`, height: 24 }}>
+                                    {slotDayGroups.map((g, gi) => {
+                                      const startIdx = timeSlots.findIndex(s => s.getTime() === g.slots[0].getTime()) + 1;
+                                      return (
+                                        <div key={gi} className="border-r border-indigo-500/5 last:border-r-0"
+                                          style={{ gridColumnStart: startIdx, gridColumnEnd: `span ${g.slots.length}` }} />
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+
+                                {/* Sleep entry rows */}
+                                {filteredSleepEntries.map((entry, entryIdx) => {
+                                  const sleepPos = getSleepBarPositions(entry);
+                                  const bedtime = new Date(entry.bedtime);
+                                  const wakeTime = new Date(entry.wakeTime);
+                                  const h = Math.floor(entry.durationMins / 60);
+                                  const m = entry.durationMins % 60;
+                                  return (
+                                    <motion.div
+                                      key={entry.id}
+                                      initial={{ opacity: 0, x: -4 }}
+                                      animate={{ opacity: 1, x: 0 }}
+                                      transition={{ delay: Math.min(entryIdx * 0.04, 0.2) }}
+                                      className={cn(
+                                        'border-b border-indigo-500/5 last:border-b-0 group/sleeprow',
+                                        'hover:bg-indigo-500/[0.02] transition-colors relative',
+                                        (isMarqueeMode || isPanning) && 'pointer-events-none'
+                                      )}
+                                      style={{ height: ROW_H, display: 'grid', gridTemplateColumns: `${SIDEBAR_PX}px 1fr` }}
+                                    >
+                                      {/* Sleep label column */}
+                                      <div className="shrink-0 px-5 sticky left-0 bg-background/95 backdrop-blur-xl z-50 border-r border-indigo-500/10 flex items-center">
+                                        <div className="flex items-center gap-3 w-full min-w-0">
+                                          <div className="shrink-0 h-9 w-9 rounded-2xl flex items-center justify-center ring-2 ring-indigo-500/20 bg-indigo-500/10 text-indigo-400 transition-all group-hover/sleeprow:ring-indigo-500/40 group-hover/sleeprow:bg-indigo-500/15">
+                                            <Moon className="h-4 w-4" />
+                                          </div>
+                                          <div className="min-w-0 flex-1">
+                                            <span className="text-[11px] font-black truncate block tracking-tight text-indigo-300/80 group-hover/sleeprow:text-indigo-300 transition-colors">
+                                              {format(bedtime, 'MMM d')} Sleep
+                                            </span>
+                                            <div className="flex items-center gap-1.5 mt-1">
+                                              {/* Quality stars */}
+                                              <div className="flex gap-0.5">
+                                                {[1, 2, 3, 4, 5].map(s => (
+                                                  <Star key={s} className={cn('h-2 w-2', s <= entry.quality ? 'fill-amber-400 text-amber-400' : 'text-muted-foreground/20')} />
+                                                ))}
+                                              </div>
+                                              <span className="text-[8px] font-black text-muted-foreground/40 tabular-nums">
+                                                {h}h{m > 0 ? ` ${m}m` : ''}
+                                              </span>
+                                              {entry.mood && (
+                                                <span className="text-[10px] leading-none">{sleepMoodEmoji(entry.mood)}</span>
+                                              )}
+                                            </div>
+                                          </div>
+                                          {/* Delete button */}
+                                          <button
+                                            onClick={() => deleteSleepEntry(entry.id)}
+                                            className="shrink-0 h-6 w-6 rounded-lg flex items-center justify-center opacity-0 group-hover/sleeprow:opacity-100 transition-all hover:bg-red-500/10 hover:text-red-400 text-muted-foreground/30"
+                                          >
+                                            <Trash2 className="h-3 w-3" />
+                                          </button>
+                                        </div>
+                                      </div>
+
+                                      {/* Sleep grid column */}
+                                      <div
+                                        className="relative group/sleepgrid"
+                                        style={{ display: 'grid', gridTemplateColumns: `repeat(${timeSlots.length}, minmax(${COL_PX * zoomLevel}px, 1fr))` }}
+                                      >
+                                        {/* background grid cells */}
+                                        {slotDayGroups.map((g, gi) => {
+                                          const startIdx = timeSlots.findIndex(s => s.getTime() === g.slots[0].getTime()) + 1;
+                                          return (
+                                            <div key={gi} className="flex border-r border-primary/10 last:border-r-0"
+                                              style={{ gridColumn: `${startIdx} / span ${g.slots.length}` }}>
+                                              {g.slots.map((slot, si) => (
+                                                <div
+                                                  key={si}
+                                                  className={cn('flex-1 border-r border-primary/5 last:border-r-0 h-full',
+                                                    isSameDay(slot, new Date()) ? 'bg-primary/[0.02]' : ''
+                                                  )}
+                                                />
+                                              ))}
+                                            </div>
+                                          );
+                                        })}
+
+                                        {/* today / now line */}
+                                        {isWithinInterval(new Date(), dateRange) && (
+                                          <div
+                                            className="absolute top-0 bottom-0 w-px bg-primary/40 z-[5] pointer-events-none"
+                                            style={{
+                                              left: `${Math.min(99.9, ((Date.now() - dateRange.start.getTime()) / (dateRange.end.getTime() - dateRange.start.getTime())) * 100)}%`,
+                                              boxShadow: '0 0 8px rgba(var(--primary),0.3)'
+                                            }}
+                                          >
+                                            <div className="absolute -top-0.5 -left-[3px] w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                                          </div>
+                                        )}
+
+                                        {/* ── Sleep bar ─────────────────── */}
+                                        {sleepPos.width > 0 && (
+                                          <div
+                                            className="absolute top-1/2 -translate-y-1/2 z-20 group/sleepbar cursor-default"
+                                            style={{ left: 0, right: 0, height: ROW_H }}
+                                            onMouseEnter={() => { setHoveredTask(null); setHoveredSleep({ entry }); }}
+                                            onMouseLeave={() => setHoveredSleep(null)}
+                                            onMouseMove={e => setMousePos({ x: e.clientX, y: e.clientY })}
+                                          >
+                                            {/* Main sleep bar */}
+                                            <div
+                                              className="absolute top-1/2 -translate-y-1/2 rounded-2xl overflow-hidden shadow-md shadow-indigo-500/20 transition-all group-hover/sleepbar:shadow-indigo-500/40 group-hover/sleepbar:scale-y-110"
+                                              style={{
+                                                left: `${sleepPos.start}%`,
+                                                width: `${sleepPos.width}%`,
+                                                height: 28,
+                                                background: 'linear-gradient(90deg, rgb(99,102,241) 0%, rgb(139,92,246) 50%, rgb(168,85,247) 100%)',
+                                              }}
+                                            >
+                                              {/* Shimmer / stars overlay */}
+                                              <div
+                                                className="absolute inset-0 opacity-30 pointer-events-none shimmer"
+                                                style={{
+                                                  background: 'linear-gradient(90deg, transparent 25%, rgba(255,255,255,0.3) 50%, transparent 75%)',
+                                                  backgroundSize: '200% 100%',
+                                                }}
+                                              />
+                                              {/* Top shine */}
+                                              <div className="absolute inset-0 bg-gradient-to-b from-white/25 to-transparent pointer-events-none" />
+                                              {/* Quality star dots */}
+                                              <div className="absolute inset-0 flex items-center justify-center gap-0.5 pointer-events-none">
+                                                {[1, 2, 3, 4, 5].map(s => (
+                                                  <Star key={s} className={cn('h-2.5 w-2.5 opacity-0 group-hover/sleepbar:opacity-100 transition-opacity', s <= entry.quality ? 'fill-white text-white' : 'text-white/30')} />
+                                                ))}
+                                              </div>
+                                              {/* Duration text inside bar */}
+                                              <div className="absolute inset-0 flex items-center px-2.5 overflow-hidden pointer-events-none">
+                                                <span className="text-[8px] font-black text-white/90 truncate tracking-tight leading-none whitespace-nowrap opacity-0 group-hover/sleepbar:opacity-100 transition-opacity">
+                                                  {h}h{m > 0 ? ` ${m}m` : ''} · {sleepQualityLabel(entry.quality)}
+                                                </span>
+                                              </div>
+                                            </div>
+
+                                            {/* Hover edge labels */}
+                                            <div className="absolute inset-0 opacity-0 group-hover/sleepbar:opacity-100 transition-opacity pointer-events-none" style={{ top: -22 }}>
+                                              <div
+                                                className="absolute text-[8px] font-black text-indigo-400/80 whitespace-nowrap bg-background/90 backdrop-blur-sm px-1.5 py-0.5 rounded-md border border-indigo-500/20 shadow-sm"
+                                                style={{ left: `${sleepPos.start}%` }}
+                                              >
+                                                {viewMode === 'day' ? format(bedtime, 'HH:mm') : format(bedtime, 'MMM d HH:mm')}
+                                              </div>
+                                              <div
+                                                className="absolute text-[8px] font-black text-amber-400/80 whitespace-nowrap bg-background/90 backdrop-blur-sm px-1.5 py-0.5 rounded-md border border-amber-500/20 shadow-sm"
+                                                style={{ left: `${sleepPos.start + sleepPos.width}%`, transform: 'translateX(-100%)' }}
+                                              >
+                                                {viewMode === 'day' ? format(wakeTime, 'HH:mm') : format(wakeTime, 'MMM d HH:mm')}
+                                              </div>
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
+                                    </motion.div>
+                                  );
+                                })}
+                              </div>
+                            )}
                           </div>
                         );
                       })
+                    )}
+
+                    {/* ── Standalone sleep section (when no tasks at all but sleep exists) ── */}
+                    {Object.keys(tasksByProject).length === 0 && filteredSleepEntries.length > 0 && (
+                      <div className="border-b border-indigo-500/10">
+                        <div
+                          className="border-b border-indigo-500/10 bg-gradient-to-r from-indigo-500/8 to-transparent"
+                          style={{ display: 'grid', gridTemplateColumns: `${SIDEBAR_PX}px 1fr`, width: contentWidth }}
+                        >
+                          <div className="shrink-0 px-5 py-2.5 sticky left-0 bg-background/90 backdrop-blur-xl z-40 border-r border-indigo-500/10 flex items-center gap-2">
+                            <Moon className="h-3.5 w-3.5 text-indigo-400/70" />
+                            <span className="text-[10px] font-black uppercase tracking-widest text-indigo-400/60">Personal · Sleep</span>
+                            <Badge variant="outline" className="ml-auto text-[8px] font-black border-indigo-500/20 bg-indigo-500/8 text-indigo-400/70 py-0 h-4 shrink-0">
+                              {filteredSleepEntries.length}
+                            </Badge>
+                          </div>
+                          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${timeSlots.length}, minmax(${COL_PX * zoomLevel}px, 1fr))`, height: 32 }}>
+                            {slotDayGroups.map((g, gi) => {
+                              const startIdx = timeSlots.findIndex(s => s.getTime() === g.slots[0].getTime()) + 1;
+                              return (
+                                <div key={gi} className="border-r border-indigo-500/5 last:border-r-0"
+                                  style={{ gridColumnStart: startIdx, gridColumnEnd: `span ${g.slots.length}` }} />
+                              );
+                            })}
+                          </div>
+                        </div>
+                        {filteredSleepEntries.map((entry, entryIdx) => {
+                          const sleepPos = getSleepBarPositions(entry);
+                          const bedtime = new Date(entry.bedtime);
+                          const wakeTime = new Date(entry.wakeTime);
+                          const h = Math.floor(entry.durationMins / 60);
+                          const m = entry.durationMins % 60;
+                          return (
+                            <motion.div
+                              key={entry.id}
+                              initial={{ opacity: 0, x: -4 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              transition={{ delay: Math.min(entryIdx * 0.04, 0.2) }}
+                              className={cn(
+                                'border-b border-indigo-500/5 last:border-b-0 group/sleeprow hover:bg-indigo-500/[0.02] transition-colors relative',
+                                (isMarqueeMode || isPanning) && 'pointer-events-none'
+                              )}
+                              style={{ height: ROW_H, display: 'grid', gridTemplateColumns: `${SIDEBAR_PX}px 1fr` }}
+                            >
+                              <div className="shrink-0 px-5 sticky left-0 bg-background/95 backdrop-blur-xl z-50 border-r border-indigo-500/10 flex items-center">
+                                <div className="flex items-center gap-3 w-full min-w-0">
+                                  <div className="shrink-0 h-9 w-9 rounded-2xl flex items-center justify-center ring-2 ring-indigo-500/20 bg-indigo-500/10 text-indigo-400">
+                                    <Moon className="h-4 w-4" />
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <span className="text-[11px] font-black truncate block tracking-tight text-indigo-300/80">{format(bedtime, 'MMM d')} Sleep</span>
+                                    <div className="flex items-center gap-1.5 mt-1">
+                                      <div className="flex gap-0.5">
+                                        {[1, 2, 3, 4, 5].map(s => <Star key={s} className={cn('h-2 w-2', s <= entry.quality ? 'fill-amber-400 text-amber-400' : 'text-muted-foreground/20')} />)}
+                                      </div>
+                                      <span className="text-[8px] font-black text-muted-foreground/40 tabular-nums">{h}h{m > 0 ? ` ${m}m` : ''}</span>
+                                      {entry.mood && <span className="text-[10px] leading-none">{sleepMoodEmoji(entry.mood)}</span>}
+                                    </div>
+                                  </div>
+                                  <button onClick={() => deleteSleepEntry(entry.id)} className="shrink-0 h-6 w-6 rounded-lg flex items-center justify-center opacity-0 group-hover/sleeprow:opacity-100 transition-all hover:bg-red-500/10 hover:text-red-400 text-muted-foreground/30">
+                                    <Trash2 className="h-3 w-3" />
+                                  </button>
+                                </div>
+                              </div>
+                              <div className="relative" style={{ display: 'grid', gridTemplateColumns: `repeat(${timeSlots.length}, minmax(${COL_PX * zoomLevel}px, 1fr))` }}>
+                                {slotDayGroups.map((g, gi) => {
+                                  const startIdx = timeSlots.findIndex(s => s.getTime() === g.slots[0].getTime()) + 1;
+                                  return (
+                                    <div key={gi} className="flex border-r border-primary/10 last:border-r-0" style={{ gridColumn: `${startIdx} / span ${g.slots.length}` }}>
+                                      {g.slots.map((slot, si) => <div key={si} className="flex-1 border-r border-primary/5 last:border-r-0 h-full" />)}
+                                    </div>
+                                  );
+                                })}
+                                {sleepPos.width > 0 && (
+                                  <div
+                                    className="absolute top-1/2 -translate-y-1/2 z-20 group/sleepbar cursor-default"
+                                    style={{ left: 0, right: 0, height: ROW_H }}
+                                    onMouseEnter={() => { setHoveredTask(null); setHoveredSleep({ entry }); }}
+                                    onMouseLeave={() => setHoveredSleep(null)}
+                                    onMouseMove={e => setMousePos({ x: e.clientX, y: e.clientY })}
+                                  >
+                                    <div
+                                      className="absolute top-1/2 -translate-y-1/2 rounded-2xl overflow-hidden shadow-md shadow-indigo-500/20 transition-all group-hover/sleepbar:shadow-indigo-500/40 z-10"
+                                      style={{ left: `${sleepPos.start}%`, width: `${sleepPos.width}%`, height: 28, background: 'linear-gradient(90deg, rgb(99,102,241), rgb(139,92,246), rgb(168,85,247))' }}
+                                    >
+                                      <div className="absolute inset-0 bg-gradient-to-b from-white/25 to-transparent pointer-events-none" />
+                                      <div className="absolute inset-0 flex items-center px-2.5 pointer-events-none">
+                                        <span className="text-[8px] font-black text-white/90 truncate opacity-0 group-hover/sleepbar:opacity-100 transition-opacity">{h}h{m > 0 ? ` ${m}m` : ''} · {sleepQualityLabel(entry.quality)}</span>
+                                      </div>
+                                    </div>
+                                    <div className="absolute inset-0 opacity-0 group-hover/sleepbar:opacity-100 transition-opacity pointer-events-none" style={{ top: -22 }}>
+                                      <div className="absolute text-[8px] font-black text-indigo-400/80 whitespace-nowrap bg-background/90 backdrop-blur-sm px-1.5 py-0.5 rounded-md border border-indigo-500/20 shadow-sm" style={{ left: `${sleepPos.start}%` }}>
+                                        {format(bedtime, 'HH:mm')}
+                                      </div>
+                                      <div className="absolute text-[8px] font-black text-amber-400/80 whitespace-nowrap bg-background/90 backdrop-blur-sm px-1.5 py-0.5 rounded-md border border-amber-500/20 shadow-sm" style={{ left: `${sleepPos.start + sleepPos.width}%`, transform: 'translateX(-100%)' }}>
+                                        {format(wakeTime, 'HH:mm')}
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </motion.div>
+                          );
+                        })}
+                      </div>
                     )}
                   </div>
                 </CardContent>
@@ -947,8 +1363,171 @@ export default function GanttViewPage() {
         </MainLayout>
       </DataLoader>
 
+      {/* ── Sleep Log Modal ────────────────────────────────────────────── */}
+      <Dialog open={showSleepModal} onOpenChange={setShowSleepModal}>
+        <DialogContent className="max-w-md p-0 border-indigo-500/20 bg-background/98 backdrop-blur-3xl rounded-[2rem] shadow-[0_40px_80px_-12px_rgba(99,102,241,0.4)] overflow-hidden gap-0" showCloseButton={false}>
+          {/* Header gradient strip */}
+          <div className="h-1.5 w-full bg-gradient-to-r from-indigo-500 via-violet-500 to-purple-500 shrink-0" />
+
+          <div className="p-6 space-y-5 overflow-y-auto max-h-[85vh]">
+            {/* Title */}
+            <DialogHeader className="flex flex-row items-center justify-between space-y-0">
+              <div className="flex items-center gap-3 text-left">
+                <div className="p-2.5 rounded-2xl bg-indigo-500/10 border border-indigo-500/20">
+                  <Moon className="h-5 w-5 text-indigo-400" />
+                </div>
+                <div>
+                  <DialogTitle className="text-base font-black tracking-tight text-foreground">Log Sleep</DialogTitle>
+                  <DialogDescription className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-400/70">Recovery · Restoration</DialogDescription>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowSleepModal(false)}
+                className="h-8 w-8 rounded-xl flex items-center justify-center hover:bg-muted/40 transition-colors text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </DialogHeader>
+
+            {/* Bedtime & Wake fields */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <label className="text-[9px] font-black uppercase tracking-[0.2em] text-muted-foreground/60 flex items-center gap-1.5">
+                  <Moon className="h-3 w-3 text-indigo-400" /> Bedtime
+                </label>
+                <input
+                  type="date"
+                  value={sleepForm.bedtimeDate}
+                  onChange={e => setSleepForm(f => ({ ...f, bedtimeDate: e.target.value }))}
+                  className="w-full h-9 px-3 rounded-xl bg-muted/30 border border-primary/10 text-[11px] font-bold text-foreground focus:outline-none focus:border-indigo-500/50 focus:bg-indigo-500/5 transition-all"
+                />
+                <input
+                  type="time"
+                  value={sleepForm.bedtimeTime}
+                  onChange={e => setSleepForm(f => ({ ...f, bedtimeTime: e.target.value }))}
+                  className="w-full h-9 px-3 rounded-xl bg-muted/30 border border-primary/10 text-[11px] font-bold text-foreground focus:outline-none focus:border-indigo-500/50 focus:bg-indigo-500/5 transition-all"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[9px] font-black uppercase tracking-[0.2em] text-muted-foreground/60 flex items-center gap-1.5">
+                  <Sunrise className="h-3 w-3 text-amber-400" /> Wake Time
+                </label>
+                <input
+                  type="date"
+                  value={sleepForm.wakeDate}
+                  onChange={e => setSleepForm(f => ({ ...f, wakeDate: e.target.value }))}
+                  className="w-full h-9 px-3 rounded-xl bg-muted/30 border border-primary/10 text-[11px] font-bold text-foreground focus:outline-none focus:border-amber-500/50 focus:bg-amber-500/5 transition-all"
+                />
+                <input
+                  type="time"
+                  value={sleepForm.wakeTime}
+                  onChange={e => setSleepForm(f => ({ ...f, wakeTime: e.target.value }))}
+                  className="w-full h-9 px-3 rounded-xl bg-muted/30 border border-primary/10 text-[11px] font-bold text-foreground focus:outline-none focus:border-amber-500/50 focus:bg-amber-500/5 transition-all"
+                />
+              </div>
+            </div>
+
+            {/* Duration preview */}
+            {(() => {
+              const bed = new Date(`${sleepForm.bedtimeDate}T${sleepForm.bedtimeTime}:00`);
+              let wake = new Date(`${sleepForm.wakeDate}T${sleepForm.wakeTime}:00`);
+              if (wake <= bed) wake = new Date(wake.getTime() + 86400000);
+              const mins = Math.round((wake.getTime() - bed.getTime()) / 60000);
+              const h = Math.floor(mins / 60); const m = mins % 60;
+              const isGood = h >= 7 && h <= 9;
+              return mins > 0 ? (
+                <div className={cn('flex items-center justify-center gap-2 py-2.5 rounded-2xl border text-[11px] font-black',
+                  isGood ? 'bg-emerald-500/8 border-emerald-500/20 text-emerald-400' : 'bg-amber-500/8 border-amber-500/20 text-amber-400'
+                )}>
+                  <Clock className="h-3.5 w-3.5" />
+                  {h}h {m}m sleep · {isGood ? '✓ Optimal range' : h < 7 ? '⚠ Under target' : '⚠ Over target'}
+                </div>
+              ) : null;
+            })()}
+
+            {/* Sleep quality */}
+            <div className="space-y-2">
+              <label className="text-[9px] font-black uppercase tracking-[0.2em] text-muted-foreground/60">Sleep Quality</label>
+              <div className="flex gap-2">
+                {([1, 2, 3, 4, 5] as const).map(q => (
+                  <button
+                    key={q}
+                    onClick={() => setSleepForm(f => ({ ...f, quality: q }))}
+                    className={cn(
+                      'flex-1 flex flex-col items-center gap-1 py-2.5 rounded-xl border transition-all text-[10px] font-black',
+                      sleepForm.quality === q
+                        ? 'bg-indigo-500/15 border-indigo-500/40 text-indigo-300 scale-[1.04]'
+                        : 'bg-muted/20 border-primary/5 text-muted-foreground/40 hover:border-primary/20'
+                    )}
+                  >
+                    <Star className={cn('h-3.5 w-3.5', sleepForm.quality >= q ? 'fill-current text-amber-400' : 'text-muted-foreground/20')} />
+                    {q}
+                  </button>
+                ))}
+              </div>
+              <p className="text-center text-[9px] text-indigo-400/70 font-black uppercase tracking-widest">{sleepQualityLabel(sleepForm.quality)}</p>
+            </div>
+
+            {/* Wake mood */}
+            <div className="space-y-2">
+              <label className="text-[9px] font-black uppercase tracking-[0.2em] text-muted-foreground/60">Wake-up Mood</label>
+              <div className="flex gap-2">
+                {(['great', 'good', 'okay', 'tired', 'awful'] as const).map(m => (
+                  <button
+                    key={m}
+                    onClick={() => setSleepForm(f => ({ ...f, mood: m }))}
+                    className={cn(
+                      'flex-1 flex flex-col items-center gap-1 py-2 rounded-xl border transition-all',
+                      sleepForm.mood === m
+                        ? 'bg-amber-500/10 border-amber-500/30 ring-1 ring-amber-500/20 scale-[1.04]'
+                        : 'bg-muted/10 border-transparent hover:bg-muted/30'
+                    )}
+                  >
+                    <span className="text-base leading-none">{sleepMoodEmoji(m)}</span>
+                    <span className={cn('text-[8px] font-black uppercase tracking-widest capitalize', sleepForm.mood === m ? 'text-amber-400/80' : 'text-muted-foreground/30')}>{m}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Notes */}
+            <div className="space-y-1.5">
+              <label className="text-[9px] font-black uppercase tracking-[0.2em] text-muted-foreground/60">Notes (optional)</label>
+              <textarea
+                value={sleepForm.notes}
+                onChange={e => setSleepForm(f => ({ ...f, notes: e.target.value }))}
+                placeholder="Vivid dreams, woke up early..."
+                rows={2}
+                className="w-full px-3 py-2.5 rounded-xl bg-muted/30 border border-primary/10 text-[11px] font-medium text-foreground placeholder:text-muted-foreground/30 focus:outline-none focus:border-indigo-500/50 focus:bg-indigo-500/5 transition-all resize-none"
+              />
+            </div>
+
+            {/* Actions */}
+            <div className="flex gap-3 pt-1">
+              <button
+                onClick={() => setShowSleepModal(false)}
+                className="flex-1 h-11 rounded-2xl border border-primary/10 bg-muted/20 text-[11px] font-black uppercase tracking-widest text-muted-foreground hover:bg-muted/40 transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveSleep}
+                disabled={sleepSaving}
+                className="flex-1 h-11 rounded-2xl bg-gradient-to-r from-indigo-500 to-violet-500 hover:from-indigo-400 hover:to-violet-400 text-white text-[11px] font-black uppercase tracking-widest transition-all shadow-lg shadow-indigo-500/25 hover:shadow-indigo-500/40 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {sleepSaving ? (
+                  <><div className="h-3.5 w-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Saving...</>
+                ) : (
+                  <><Moon className="h-3.5 w-3.5" /> Log Sleep</>
+                )}
+              </button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* ── Cursor-following task hover card (portal) ──────────────── */}
-      {hoveredTask && typeof document !== 'undefined' && createPortal(
+      {mounted && hoveredTask && createPortal(
         (() => {
           const { task, loggedMins, util, plannedStart, project } = hoveredTask;
           const CARD_W = 320;
@@ -1077,6 +1656,105 @@ export default function GanttViewPage() {
                       </p>
                     )}
                   </div>
+                </div>
+              </div>
+            </div>
+          );
+        })()
+        , document.body)}
+
+      {/* ── Cursor-following sleep hover card (portal) ────────────── */}
+      {mounted && hoveredSleep && createPortal(
+        (() => {
+          const { entry } = hoveredSleep;
+          const CARD_W = 280;
+          const CARD_H = 300;
+          const GAP = 18;
+          const vpW = window.innerWidth;
+          const vpH = window.innerHeight;
+          const left = mousePos.x + CARD_W + GAP > vpW ? mousePos.x - CARD_W - GAP : mousePos.x + GAP;
+          const top = mousePos.y + CARD_H + GAP > vpH ? mousePos.y - CARD_H - GAP : mousePos.y + GAP;
+          const h = Math.floor(entry.durationMins / 60);
+          const m = entry.durationMins % 60;
+
+          return (
+            <div
+              className="fixed z-[9999] pointer-events-none"
+              style={{ left, top, width: CARD_W }}
+            >
+              <div className="bg-background/98 backdrop-blur-3xl border border-indigo-500/20 shadow-[0_32px_64px_-12px_rgba(99,102,241,0.4)] rounded-[2rem] overflow-hidden text-foreground">
+                <div className="h-1.5 w-full bg-gradient-to-r from-indigo-500 via-violet-500 to-purple-500" />
+                <div className="p-5 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-400/60 flex items-center gap-1.5">
+                      <Moon className="h-3 w-3" /> Recovery Session
+                    </span>
+                    {entry.mood && <span className="text-base">{sleepMoodEmoji(entry.mood)}</span>}
+                  </div>
+
+                  <div className="space-y-1">
+                    <h4 className="text-sm font-black tracking-tight leading-snug text-foreground">
+                      Sleep Quality: {sleepQualityLabel(entry.quality)}
+                    </h4>
+                    <div className="flex gap-1">
+                      {[1, 2, 3, 4, 5].map(s => (
+                        <Star key={s} className={cn('h-3 w-3', s <= entry.quality ? 'fill-amber-400 text-amber-400' : 'text-muted-foreground/20')} />
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4 pt-1">
+                    <div className="space-y-3">
+                      <div className="flex items-start gap-2.5">
+                        <div className="mt-0.5 p-1 rounded-md bg-indigo-500/10 border border-indigo-500/10">
+                          <Moon className="h-3 w-3 text-indigo-400/80" />
+                        </div>
+                        <div>
+                          <p className="text-[8px] font-black uppercase tracking-widest text-muted-foreground/50 mb-1">Bedtime</p>
+                          <p className="text-[10px] font-black text-foreground/90">{format(new Date(entry.bedtime), 'HH:mm')}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-2.5">
+                        <div className="mt-0.5 p-1 rounded-md bg-amber-500/10 border border-amber-500/10">
+                          <Sunrise className="h-3 w-3 text-amber-500/80" />
+                        </div>
+                        <div>
+                          <p className="text-[8px] font-black uppercase tracking-widest text-muted-foreground/50 mb-1">Woke up</p>
+                          <p className="text-[10px] font-black text-foreground/90">{format(new Date(entry.wakeTime), 'HH:mm')}</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-3">
+                      <div className="flex items-start gap-2.5">
+                        <div className="mt-0.5 p-1 rounded-md bg-violet-500/10 border border-violet-500/10">
+                          <Clock className="h-3 w-3 text-violet-400/80" />
+                        </div>
+                        <div>
+                          <p className="text-[8px] font-black uppercase tracking-widest text-muted-foreground/50 mb-1">Duration</p>
+                          <p className="text-[10px] font-black text-foreground/90">{h}h {m}m</p>
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-2.5">
+                        <div className="mt-0.5 p-1 rounded-md bg-muted/40 border border-primary/5">
+                          <Star className="h-3 w-3 text-muted-foreground/50" />
+                        </div>
+                        <div>
+                          <p className="text-[8px] font-black uppercase tracking-widest text-muted-foreground/50 mb-1">Date</p>
+                          <p className="text-[10px] font-black text-foreground/90">{format(new Date(entry.wakeTime), 'MMM d')}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {entry.notes && (
+                    <div className="pt-3 border-t border-primary/5">
+                      <p className="text-[9px] font-black uppercase tracking-[0.2em] text-muted-foreground/60 mb-1.5 flex items-center gap-1.5">
+                        <Plus className="h-3 w-3" /> Dreams & Notes
+                      </p>
+                      <p className="text-[10px] leading-relaxed text-muted-foreground italic">&ldquo;{entry.notes}&rdquo;</p>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

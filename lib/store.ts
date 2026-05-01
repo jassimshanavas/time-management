@@ -1,6 +1,6 @@
 // Global State Management using Zustand with Firebase
 import { create } from 'zustand';
-import type { Task, Reminder, Note, Goal, Habit, TimeEntry, User, AppSettings, Project } from '@/types';
+import type { Task, Reminder, Note, Goal, Habit, TimeEntry, User, AppSettings, Project, SleepEntry } from '@/types';
 import type { UserGamification, XPReward, Achievement } from '@/types/gamification';
 import * as firebaseService from './firebase-service';
 import * as gamificationService from './firebase-gamification';
@@ -76,6 +76,13 @@ interface AppStore {
   updateTimeEntry: (id: string, entry: Partial<TimeEntry>) => Promise<void>;
   deleteTimeEntry: (id: string) => Promise<void>;
   stopTimeEntry: (id: string, notes?: string) => Promise<void>;
+
+  // Sleep Tracking
+  sleepEntries: SleepEntry[];
+  loadSleepEntries: () => Promise<void>;
+  addSleepEntry: (entry: Omit<SleepEntry, 'id'>) => Promise<void>;
+  updateSleepEntry: (id: string, entry: Partial<SleepEntry>) => Promise<void>;
+  deleteSleepEntry: (id: string) => Promise<void>;
 
   // Projects
   projects: Project[];
@@ -607,6 +614,49 @@ export const useStore = create<AppStore>()((set, get) => ({
     }
   },
 
+  // Sleep Tracking
+  sleepEntries: [],
+  loadSleepEntries: async () => {
+    const userId = get().userId;
+    if (!userId) return;
+    try {
+      const sleepEntries = await firebaseService.getSleepEntries(userId);
+      set({ sleepEntries });
+    } catch (error) {
+      console.error('Error loading sleep entries:', error);
+    }
+  },
+  addSleepEntry: async (entry) => {
+    const userId = get().userId;
+    if (!userId) return;
+    try {
+      const entryId = await firebaseService.addSleepEntry(userId, entry);
+      set((state) => ({ sleepEntries: [...state.sleepEntries, { ...entry, id: entryId }] }));
+    } catch (error) {
+      console.error('Error adding sleep entry:', error);
+    }
+  },
+  updateSleepEntry: async (id, updatedEntry) => {
+    try {
+      await firebaseService.updateSleepEntry(id, updatedEntry);
+      set((state) => ({
+        sleepEntries: state.sleepEntries.map((e) =>
+          e.id === id ? { ...e, ...updatedEntry } : e
+        ),
+      }));
+    } catch (error) {
+      console.error('Error updating sleep entry:', error);
+    }
+  },
+  deleteSleepEntry: async (id) => {
+    try {
+      await firebaseService.deleteSleepEntry(id);
+      set((state) => ({ sleepEntries: state.sleepEntries.filter((e) => e.id !== id) }));
+    } catch (error) {
+      console.error('Error deleting sleep entry:', error);
+    }
+  },
+
   // Projects
   projects: [],
   loadProjects: async () => {
@@ -692,6 +742,7 @@ export const useStore = create<AppStore>()((set, get) => ({
       get().loadGoals(),
       get().loadHabits(),
       get().loadTimeEntries(),
+      get().loadSleepEntries(),
       get().loadSettings(),
       get().loadGamification(),
     ]);

@@ -16,7 +16,7 @@ import {
   deleteField,
 } from 'firebase/firestore';
 import { db } from './firebase';
-import type { Task, Reminder, Note, Goal, Habit, TimeEntry, User, AppSettings, Project, ProjectMember } from '@/types';
+import type { Task, Reminder, Note, Goal, Habit, TimeEntry, User, AppSettings, Project, ProjectMember, SleepEntry } from '@/types';
 
 // Helper to convert Firestore timestamps to Date objects
 const convertTimestamps = (data: any) => {
@@ -345,6 +345,32 @@ export const updateTimeEntry = async (entryId: string, updates: Partial<TimeEntr
 
 export const deleteTimeEntry = async (entryId: string): Promise<void> => {
   await deleteDoc(doc(db, 'timeEntries', entryId));
+};
+
+// ==================== SLEEP ENTRIES ====================
+export const getSleepEntries = async (userId: string): Promise<SleepEntry[]> => {
+  const q = query(collection(db, 'sleepEntries'), where('userId', '==', userId));
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map((doc) => ({
+    id: doc.id,
+    ...convertTimestamps(doc.data()),
+  })) as SleepEntry[];
+};
+
+export const addSleepEntry = async (userId: string, entry: Omit<SleepEntry, 'id'>): Promise<string> => {
+  const serialized = serializeForFirestore({ ...entry, userId });
+  const docRef = await addDoc(collection(db, 'sleepEntries'), serialized);
+  return docRef.id;
+};
+
+export const updateSleepEntry = async (entryId: string, updates: Partial<SleepEntry>): Promise<void> => {
+  const ref = doc(db, 'sleepEntries', entryId);
+  const data = serializeUpdateForFirestore(updates);
+  await updateDoc(ref, data);
+};
+
+export const deleteSleepEntry = async (entryId: string): Promise<void> => {
+  await deleteDoc(doc(db, 'sleepEntries', entryId));
 };
 
 // ==================== USER & SETTINGS ====================
