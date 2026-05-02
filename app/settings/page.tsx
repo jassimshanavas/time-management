@@ -17,7 +17,8 @@ import {
 import { Separator } from '@/components/ui/separator';
 import { useStore } from '@/lib/store';
 import { useAuth } from '@/lib/auth-context';
-import { User, Bell, Palette, Download, Trash2 } from 'lucide-react';
+import { User, Bell, Palette, Download, Trash2, Code2, ExternalLink } from 'lucide-react';
+import Link from 'next/link';
 import { useState } from 'react';
 import { ProtectedRoute } from '@/components/protected-route';
 import { DataLoader } from '@/components/data-loader';
@@ -244,6 +245,35 @@ export default function SettingsPage() {
                 <Trash2 className="h-4 w-4 mr-2" />
                 Clear Data
               </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* API & Integrations */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Code2 className="h-5 w-5" />
+              API & Integrations
+            </CardTitle>
+            <CardDescription>Connect with AI agents, n8n, Zapier, Claude, and more</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              TimeFlow exposes a full REST API. Generate API keys, register webhooks, and connect to any external tool or AI agent.
+            </p>
+            <div className="flex gap-2">
+              <Link href="/settings/api">
+                <Button variant="outline">
+                  <Code2 className="h-4 w-4 mr-2" />
+                  Manage API Keys & Webhooks
+                  <ExternalLink className="h-3 w-3 ml-2 opacity-50" />
+                </Button>
+              </Link>
+            </div>
+            <div className="text-xs text-muted-foreground space-y-1">
+              <p>Base URL: <code className="bg-muted px-1 py-0.5 rounded">{typeof window !== 'undefined' ? window.location.origin : ''}/api/v1</code></p>
+              <p>Auth: <code className="bg-muted px-1 py-0.5 rounded">Authorization: Bearer &lt;token&gt;</code> or <code className="bg-muted px-1 py-0.5 rounded">X-API-Key: &lt;key&gt;</code></p>
             </div>
           </CardContent>
         </Card>

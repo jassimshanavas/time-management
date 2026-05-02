@@ -181,6 +181,7 @@ export interface User {
   bio?: string;
   company?: string;
   website?: string;
+  telegramChatId?: string;
   createdAt: Date;
 }
 
