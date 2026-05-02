@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { MainLayout } from '@/components/layout/main-layout';
 import { Card, CardContent } from '@/components/ui/card';
@@ -20,7 +20,6 @@ import {
   ZoomIn,
   ZoomOut,
   RotateCcw,
-  Search,
   Layers,
   TrendingUp,
   Clock,
@@ -77,6 +76,10 @@ import {
   areIntervalsOverlapping,
 } from 'date-fns';
 import { cn } from '@/lib/utils';
+import type { Task, Project, SleepEntry } from '@/types';
+
+/** Task plus optional close timestamps used when resolving done-bar end. */
+type GanttTask = Task & { completedAt?: Date; doneAt?: Date; closedAt?: Date };
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const SIDEBAR_PX = 224;
@@ -126,7 +129,13 @@ export default function GanttViewPage() {
   const [isSelecting, setIsSelecting] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
   const [selectionRange, setSelectionRange] = useState<{ start: number; end: number } | null>(null);
-  const [hoveredTask, setHoveredTask] = useState<{ task: any; loggedMins: number; util: number; plannedStart: Date; project: any } | null>(null);
+  const [hoveredTask, setHoveredTask] = useState<{
+    task: GanttTask;
+    loggedMins: number;
+    util: number;
+    plannedStart: Date;
+    project: Project | null;
+  } | null>(null);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
 
   // ── Sleep modal state ────────────────────────────────────────────────────────
@@ -141,7 +150,7 @@ export default function GanttViewPage() {
     notes: '',
   });
   const [sleepSaving, setSleepSaving] = useState(false);
-  const [hoveredSleep, setHoveredSleep] = useState<{ entry: any } | null>(null);
+  const [hoveredSleep, setHoveredSleep] = useState<{ entry: SleepEntry } | null>(null);
 
   const timelineRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -167,13 +176,21 @@ export default function GanttViewPage() {
     return { start: startOfMonth(currentDate), end: endOfMonth(addMonths(currentDate, 2)) };
   }, [currentDate, viewMode, dateRangeSelection]);
 
+  /** Real "now" clamped to the visible window so bars stay continuous when paging months/quarters. */
+  const viewAnchoredNowMs = useMemo(() => {
+    const now = Date.now();
+    const s = dateRange.start.getTime();
+    const e = dateRange.end.getTime();
+    return Math.min(Math.max(now, s), e);
+  }, [dateRange]);
+
   const timeSlots = useMemo(
     () => viewMode === 'day' ? eachHourOfInterval(dateRange) : eachDayOfInterval(dateRange),
     [dateRange, viewMode]
   );
 
   // ── Task helpers ────────────────────────────────────────────────────────────
-  const getTaskDates = (task: any) => {
+  const getTaskDates = (task: GanttTask) => {
     const plannedStart = new Date(task.scheduledStart || task.createdAt);
     const estimatedEnd = task.estimatedDuration
       ? new Date(plannedStart.getTime() + task.estimatedDuration * 60000)
@@ -189,9 +206,25 @@ export default function GanttViewPage() {
       : new Date(plannedStart);
     if (plannedEnd < plannedStart) plannedEnd = new Date(plannedStart);
 
-    const actualEnd = task.status === 'done'
-      ? new Date(task.lastStatusChange || task.updatedAt || plannedEnd)
-      : new Date(Math.max(plannedStart.getTime(), Date.now()));
+    let actualEnd: Date;
+    if (task.status === 'done') {
+      const explicitDoneAt = task.completedAt || task.doneAt || task.closedAt || task.lastStatusChange;
+      if (explicitDoneAt) {
+        actualEnd = new Date(explicitDoneAt);
+      } else {
+        const fallbackCandidates = [
+          task.updatedAt ? new Date(task.updatedAt).getTime() : Number.POSITIVE_INFINITY,
+          task.deadline ? new Date(task.deadline).getTime() : Number.POSITIVE_INFINITY,
+          task.scheduledEnd ? new Date(task.scheduledEnd).getTime() : Number.POSITIVE_INFINITY,
+          plannedEnd.getTime(),
+        ].filter(t => Number.isFinite(t));
+        const bestGuess = fallbackCandidates.length > 0 ? Math.min(...fallbackCandidates) : plannedStart.getTime();
+        actualEnd = new Date(Math.max(plannedStart.getTime(), bestGuess));
+      }
+      if (!Number.isFinite(actualEnd.getTime()) || actualEnd < plannedStart) actualEnd = new Date(plannedStart);
+    } else {
+      actualEnd = new Date(Math.max(plannedStart.getTime(), Date.now()));
+    }
 
     return { plannedStart, plannedEnd, actualEnd };
   };
@@ -200,10 +233,21 @@ export default function GanttViewPage() {
     if (selectedProjectId && task.projectId !== selectedProjectId) return false;
     const { plannedStart, plannedEnd, actualEnd } = getTaskDates(task);
     try {
-      return (
-        areIntervalsOverlapping({ start: plannedStart, end: plannedEnd }, dateRange) ||
-        areIntervalsOverlapping({ start: plannedStart, end: actualEnd }, dateRange)
-      );
+      if (task.status === 'done') {
+        return areIntervalsOverlapping({ start: plannedStart, end: actualEnd }, dateRange);
+      }
+      if (areIntervalsOverlapping({ start: plannedStart, end: plannedEnd }, dateRange)) {
+        return true;
+      }
+      if (task.deadline && isWithinInterval(new Date(task.deadline), dateRange)) {
+        return true;
+      }
+      const now = Date.now();
+      const isOverdue = task.deadline && new Date(task.deadline).getTime() < now;
+      if (isOverdue) {
+        return areIntervalsOverlapping({ start: plannedStart, end: actualEnd }, dateRange);
+      }
+      return false;
     } catch {
       if (task.deadline) return isWithinInterval(new Date(task.deadline), dateRange);
       return false;
@@ -242,6 +286,16 @@ export default function GanttViewPage() {
     return map;
   }, [timeEntries]);
 
+  const timeEntriesByTask = useMemo(() => {
+    const map: Record<string, typeof timeEntries> = {};
+    timeEntries.forEach(entry => {
+      if (!entry.taskId) return;
+      if (!map[entry.taskId]) map[entry.taskId] = [];
+      map[entry.taskId].push(entry);
+    });
+    return map;
+  }, [timeEntries]);
+
   const formatMin = (mins: number) => {
     const h = Math.floor(mins / 60);
     const m = mins % 60;
@@ -249,7 +303,7 @@ export default function GanttViewPage() {
     return `${m}m`;
   };
 
-  const getTaskRangePositions = (task: any) => {
+  const getTaskRangePositions = (task: GanttTask) => {
     const { plannedStart, plannedEnd, actualEnd } = getTaskDates(task);
     const deadlineDate = task.deadline ? new Date(task.deadline) : plannedEnd;
     const total = dateRange.end.getTime() - dateRange.start.getTime();
@@ -258,17 +312,17 @@ export default function GanttViewPage() {
     const startPct = toRange(plannedStart);
     const deadlinePct = toRange(deadlineDate);
     const actualEndPct = toRange(actualEnd);
-    const nowPct = toRange(new Date());
+    const nowPct = toRange(new Date(viewAnchoredNowMs));
     const plannedPct = Math.max(0, deadlinePct - startPct);
     const actualPct = Math.max(0, actualEndPct - startPct);
-    const isOverdue = task.status !== 'done' && new Date() > deadlineDate;
+    const isOverdue = task.status !== 'done' && Date.now() > deadlineDate.getTime();
     const delayStartPct = Math.min(deadlinePct, nowPct);
     const delayWidthPct = isOverdue ? Math.max(0, nowPct - deadlinePct) : 0;
     return { start: startPct, plannedWidth: plannedPct, actualWidth: actualPct, deadlinePct, isOverrun: actualEnd > plannedEnd && actualEnd <= dateRange.end, isDelayed: isOverdue, delayStart: delayStartPct, delayWidth: delayWidthPct };
   };
 
   // ── Sleep helpers ────────────────────────────────────────────────────────────
-  const getSleepBarPositions = (entry: any) => {
+  const getSleepBarPositions = (entry: SleepEntry) => {
     const total = dateRange.end.getTime() - dateRange.start.getTime();
     if (total <= 0) return { start: 0, width: 0 };
     const toRange = (d: Date) => Math.max(0, Math.min(100, ((d.getTime() - dateRange.start.getTime()) / total) * 100));
@@ -421,6 +475,41 @@ export default function GanttViewPage() {
     });
     return groups;
   }, [timeSlots]);
+
+  // ── Sleep-by-day lookup (key = 'yyyy-MM-dd' of wake date) ──────────────────
+  const sleepByDay = useMemo(() => {
+    const map: Record<string, SleepEntry[]> = {};
+    filteredSleepEntries.forEach(entry => {
+      const key = format(new Date(entry.wakeTime), 'yyyy-MM-dd');
+      if (!map[key]) map[key] = [];
+      map[key].push(entry);
+    });
+    return map;
+  }, [filteredSleepEntries]);
+
+  // Heatmap colour for a quality score (1-5)
+  const sleepQualityHeatmap = (q: number) => {
+    const stops = [
+      '',
+      'rgba(239,68,68,0.18)',   // 1 – terrible  (red)
+      'rgba(249,115,22,0.16)',  // 2 – poor       (orange)
+      'rgba(234,179,8,0.14)',   // 3 – okay       (yellow)
+      'rgba(99,102,241,0.18)', // 4 – good       (indigo)
+      'rgba(139,92,246,0.28)', // 5 – excellent  (violet)
+    ];
+    return stops[q] || stops[3];
+  };
+  const sleepQualityBorder = (q: number) => {
+    const stops = [
+      '',
+      'rgba(239,68,68,0.35)',
+      'rgba(249,115,22,0.30)',
+      'rgba(234,179,8,0.28)',
+      'rgba(99,102,241,0.35)',
+      'rgba(139,92,246,0.50)',
+    ];
+    return stops[q] || stops[3];
+  };
 
   // ─────────────────────────────────────────────────────────────────────────────
   return (
@@ -631,15 +720,18 @@ export default function GanttViewPage() {
             {/* ── Legend row ─────────────────────────────────────────────── */}
             <div className="flex flex-wrap items-center gap-x-8 gap-y-2 px-1">
               {[
-                { swatch: <div className="h-3 w-10 rounded-full bg-primary/8 border border-primary/15" />, label: 'Planned Range' },
-                { swatch: <div className="h-3 w-10 rounded-full bg-gradient-to-r from-blue-500 to-indigo-500" />, label: 'In Progress' },
-                { swatch: <div className="h-3 w-10 rounded-full bg-gradient-to-r from-emerald-500 to-teal-500" />, label: 'Completed' },
+                { swatch: <div className="h-3 w-10 rounded-full bg-muted/35 border border-primary/15" />, label: 'Start → Deadline' },
                 {
                   swatch: (
-                    <div className="h-3 w-10 rounded-full overflow-hidden border border-red-500/30 bg-red-500/10">
-                      <div className="h-full w-full bg-[repeating-linear-gradient(45deg,transparent,transparent_4px,rgba(239,68,68,0.35)_4px,rgba(239,68,68,0.35)_8px)]" />
+                    <div className="h-3 w-10 rounded-full overflow-hidden border border-red-500/30 bg-red-500/10" />
+                  ), label: 'Deadline → Present'
+                },
+                {
+                  swatch: (
+                    <div className="h-3 w-10 rounded-full overflow-hidden border border-cyan-200/20 bg-gradient-to-r from-cyan-400/85 to-blue-400/85">
+                      <div className="h-full w-full bg-[repeating-linear-gradient(45deg,transparent,transparent_5px,rgba(255,255,255,0.22)_5px,rgba(255,255,255,0.22)_8px)]" />
                     </div>
-                  ), label: 'Overrun'
+                  ), label: 'Logged Time'
                 },
                 { swatch: <div className="h-3 w-10 rounded-full bg-gradient-to-r from-indigo-500 via-violet-500 to-purple-500 opacity-80" />, label: 'Sleep' },
               ].map((l, i) => (
@@ -766,27 +858,25 @@ export default function GanttViewPage() {
                     </div>
 
                     {/* ── Global sleep zones (slanted stripes over the entire timeline) ── */}
-                    {viewMode === 'day' && (
-                      <div className="absolute inset-y-0 pointer-events-none overflow-hidden" style={{ left: SIDEBAR_PX, right: 0, zIndex: 0 }}>
-                        {filteredSleepEntries.map(entry => {
-                          const sleepPos = getSleepBarPositions(entry);
-                          if (sleepPos.width <= 0) return null;
-                          return (
-                            <div
-                              key={`global-sleep-${entry.id}`}
-                              className="absolute inset-y-0"
-                              style={{
-                                left: `${sleepPos.start}%`,
-                                width: `${sleepPos.width}%`,
-                                background: `repeating-linear-gradient(135deg, rgba(99,102,241,0.06) 0, rgba(99,102,241,0.06) 12px, transparent 12px, transparent 24px)`,
-                                borderLeft: '1px solid rgba(129,140,248,0.1)',
-                                borderRight: '1px solid rgba(129,140,248,0.1)',
-                              }}
-                            />
-                          );
-                        })}
-                      </div>
-                    )}
+                    <div className="absolute inset-y-0 pointer-events-none overflow-hidden" style={{ left: SIDEBAR_PX, right: 0, zIndex: 0 }}>
+                      {filteredSleepEntries.map(entry => {
+                        const sleepPos = getSleepBarPositions(entry);
+                        if (sleepPos.width <= 0) return null;
+                        return (
+                          <div
+                            key={`global-sleep-${entry.id}`}
+                            className="absolute inset-y-0"
+                            style={{
+                              left: `${sleepPos.start}%`,
+                              width: `${sleepPos.width}%`,
+                              background: `repeating-linear-gradient(135deg, rgba(99,102,241,0.06) 0, rgba(99,102,241,0.06) 12px, transparent 12px, transparent 24px)`,
+                              borderLeft: '1px solid rgba(129,140,248,0.1)',
+                              borderRight: '1px solid rgba(129,140,248,0.1)',
+                            }}
+                          />
+                        );
+                      })}
+                    </div>
 
                     {/* ── Task rows ─────────────────────────────────────── */}
                     {Object.keys(tasksByProject).length === 0 ? (
@@ -808,7 +898,13 @@ export default function GanttViewPage() {
                                   {project ? (
                                     <>
                                       <div className="h-2.5 w-2.5 rounded-full ring-2 ring-offset-2 ring-offset-background shrink-0"
-                                        style={{ backgroundColor: project.color, ringColor: project.color + '40' } as any} />
+                                        style={
+                                          {
+                                            backgroundColor: project.color,
+                                            ...( { ringColor: `${project.color}40` } as CSSProperties ),
+                                          } as CSSProperties
+                                        }
+                                      />
                                       <span className="text-[10px] font-black uppercase tracking-widest truncate">{project.name}</span>
                                     </>
                                   ) : (
@@ -838,6 +934,59 @@ export default function GanttViewPage() {
                               const util = range.plannedWidth > 0 ? Math.round((range.actualWidth / range.plannedWidth) * 100) : 0;
                               const isOverdue = task.status !== 'done' && new Date(task.deadline || task.scheduledEnd || 0) < new Date();
                               const loggedMins = loggedDurations[task.id] || 0;
+                              const completionPct = task.estimatedDuration && task.estimatedDuration > 0
+                                ? Math.round(Math.min(100, (loggedMins / task.estimatedDuration) * 100))
+                                : Math.max(0, Math.min(100, util));
+                              const nowMs = Date.now();
+                              const plannedMs = plannedEnd.getTime() - plannedStart.getTime();
+                              const expectedByTodayPct = plannedMs > 0
+                                ? Math.max(0, Math.min(100, ((nowMs - plannedStart.getTime()) / plannedMs) * 100))
+                                : 0;
+                              const variancePct = completionPct - Math.round(expectedByTodayPct);
+                              const varianceDays = task.deadline
+                                ? Math.floor((nowMs - new Date(task.deadline).getTime()) / 86400000)
+                                : 0;
+                              const varianceLabel = task.status === 'done'
+                                ? 'Done'
+                                : varianceDays > 0
+                                  ? `+${varianceDays}d`
+                                  : varianceDays < 0
+                                    ? `${varianceDays}d`
+                                    : '0d';
+                              const health = task.status === 'done'
+                                ? 'Done'
+                                : isOverdue || variancePct < -15
+                                  ? 'At risk'
+                                  : 'On track';
+                              const showOverdueWindow = task.status !== 'done' && range.isDelayed && range.delayWidth > 0;
+                              const trackedWindowWidth = range.plannedWidth + (showOverdueWindow ? range.delayWidth : 0);
+                              const trackedStartMs = plannedStart.getTime();
+                              const trackedEndMs = task.status === 'done'
+                                ? actualEnd.getTime()
+                                : showOverdueWindow
+                                  ? viewAnchoredNowMs
+                                  : (task.deadline ? new Date(task.deadline).getTime() : plannedEnd.getTime());
+                              const viewStartMs = dateRange.start.getTime();
+                              const viewEndMs = dateRange.end.getTime();
+                              const totalViewMs = Math.max(1, viewEndMs - viewStartMs);
+                              const actualEndPct = Math.max(0, Math.min(100, ((actualEnd.getTime() - viewStartMs) / totalViewMs) * 100));
+                              const completedWidthPct = Math.max(0, actualEndPct - range.start);
+                              const loggedSlices = (timeEntriesByTask[task.id] || [])
+                                .map(entry => {
+                                  const entryStartMs = new Date(entry.startTime).getTime();
+                                  const entryEndMs = entry.endTime
+                                    ? new Date(entry.endTime).getTime()
+                                    : entryStartMs + Math.max(0, entry.duration || 0) * 60000;
+                                  const clampedStart = Math.max(entryStartMs, trackedStartMs, viewStartMs);
+                                  const clampedEnd = Math.min(entryEndMs, trackedEndMs, viewEndMs);
+                                  if (!isFinite(clampedStart) || !isFinite(clampedEnd) || clampedEnd <= clampedStart) return null;
+                                  return {
+                                    id: entry.id,
+                                    left: ((clampedStart - viewStartMs) / totalViewMs) * 100,
+                                    width: ((clampedEnd - clampedStart) / totalViewMs) * 100,
+                                  };
+                                })
+                                .filter((slice): slice is { id: string; left: number; width: number } => Boolean(slice) && slice.width > 0.02);
 
                               return (
                                 <motion.div
@@ -874,25 +1023,43 @@ export default function GanttViewPage() {
                                       </div>
 
                                       {/* text info */}
-                                      <div className="min-w-0 flex-1">
-                                        <Link
-                                          href={`/tasks/${task.id}?fromView=gantt`}
-                                          className="text-[11px] font-black truncate block tracking-tight group-hover/row:text-primary transition-colors"
-                                        >
-                                          {task.title}
-                                        </Link>
-                                        <div className="flex items-center gap-1.5 mt-1">
-                                          {/* priority dot */}
-                                          <div className={cn('h-1.5 w-1.5 rounded-full shrink-0', priorityDot(task.priority))} />
-                                          {/* mini progress */}
-                                          <div className="h-1 flex-1 rounded-full bg-muted/50 overflow-hidden">
-                                            <div
-                                              className={cn('h-full rounded-full transition-all duration-700', util > 100 ? 'bg-red-500' : 'bg-primary/50')}
-                                              style={{ width: `${Math.min(100, util)}%` }}
-                                            />
-                                          </div>
-                                          <span className={cn('text-[8px] font-black shrink-0 tabular-nums', util > 100 ? 'text-red-400' : 'text-muted-foreground/40')}>
-                                            {util}%
+                                        <div className="min-w-0 flex-1">
+                                          <Link
+                                            href={`/tasks/${task.id}?fromView=gantt`}
+                                            className="text-[11px] font-black truncate block tracking-tight group-hover/row:text-primary transition-colors"
+                                          >
+                                            {task.title}
+                                          </Link>
+                                          <div className="flex items-center gap-1.5 mt-1 min-w-0 flex-wrap">
+                                            {/* priority dot */}
+                                            <div className={cn('h-1.5 w-1.5 rounded-full shrink-0', priorityDot(task.priority))} />
+                                            <span className="text-[8px] font-black shrink-0 tabular-nums px-1.5 py-0.5 rounded-md border border-primary/10 bg-primary/5 text-primary/80">
+                                              {completionPct}%
+                                            </span>
+                                            {loggedMins > 0 && (
+                                              <span className="text-[8px] font-black shrink-0 tabular-nums px-1.5 py-0.5 rounded-md border border-blue-500/20 bg-blue-500/10 text-blue-400">
+                                                {formatMin(loggedMins)} logged
+                                              </span>
+                                            )}
+                                            <span className={cn(
+                                              'text-[8px] font-black shrink-0 tabular-nums px-1.5 py-0.5 rounded-md border',
+                                            task.status === 'done'
+                                              ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-300/80'
+                                              : varianceDays > 0
+                                                ? 'border-red-500/25 bg-red-500/10 text-red-300/80'
+                                                : 'border-amber-500/20 bg-amber-500/10 text-amber-300/80'
+                                          )}>
+                                            {varianceLabel}
+                                          </span>
+                                          <span className={cn(
+                                            'text-[8px] font-black shrink-0 px-1.5 py-0.5 rounded-md border',
+                                            health === 'Done'
+                                              ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-300/80'
+                                              : health === 'At risk'
+                                                ? 'border-red-500/25 bg-red-500/10 text-red-300/80'
+                                                : 'border-blue-500/25 bg-blue-500/10 text-blue-300/80'
+                                          )}>
+                                            {health}
                                           </span>
                                           {isOverdue && (
                                             <AlertCircle className="h-2.5 w-2.5 text-red-400 shrink-0 animate-pulse" />
@@ -945,98 +1112,74 @@ export default function GanttViewPage() {
                                       onMouseMove={e => setMousePos({ x: e.clientX, y: e.clientY })}
                                     >
 
-                                      {/* ── Layer 1: Delay zone (Deadline → Now) ── */}
-                                      {range.isDelayed && range.delayWidth > 0 && (() => {
-                                        const delayDays = Math.round(range.delayWidth / 100 * (dateRange.end.getTime() - dateRange.start.getTime()) / 86400000);
-                                        return (
-                                          <>
-                                            {/* Full-height red wash behind the delay zone */}
-                                            <div
-                                              className="absolute top-0 bottom-0 pointer-events-none z-[1]"
-                                              style={{
-                                                left: `${range.deadlinePct}%`,
-                                                width: `${range.delayWidth}%`,
-                                                background: 'linear-gradient(90deg, rgba(239,68,68,0.18) 0%, rgba(239,68,68,0.06) 100%)',
-                                              }}
-                                            />
-                                            {/* Solid red deadline wall */}
-                                            <div
-                                              className="absolute top-0 bottom-0 w-0.5 z-[2] pointer-events-none"
-                                              style={{
-                                                left: `${range.deadlinePct}%`,
-                                                background: 'linear-gradient(180deg, rgba(239,68,68,0) 0%, rgba(239,68,68,0.9) 30%, rgba(239,68,68,0.9) 70%, rgba(239,68,68,0) 100%)',
-                                              }}
-                                            />
-                                            {/* Connecting dashed line from deadline to "now" dot at mid-height */}
-                                            <div
-                                              className="absolute top-1/2 -translate-y-1/2 z-[2] pointer-events-none"
-                                              style={{
-                                                left: `${range.deadlinePct}%`,
-                                                width: `${range.delayWidth}%`,
-                                                height: 2,
-                                                background: 'repeating-linear-gradient(90deg, rgba(239,68,68,0.7) 0px, rgba(239,68,68,0.7) 5px, transparent 5px, transparent 9px)',
-                                              }}
-                                            />
-                                            {/* Floating overdue badge above the midpoint of delay zone */}
-                                            <div
-                                              className="absolute z-30 pointer-events-none"
-                                              style={{
-                                                left: `calc(${range.deadlinePct}% + ${range.delayWidth / 2}%)`,
-                                                top: '50%',
-                                                transform: 'translate(-50%, -220%)',
-                                              }}
-                                            >
-                                              <div className="flex items-center gap-1 bg-red-500/90 text-white px-1.5 py-0.5 rounded-full text-[7px] font-black whitespace-nowrap shadow-lg shadow-red-500/30 backdrop-blur-sm">
-                                                <div className="h-1 w-1 rounded-full bg-white animate-pulse" />
-                                                +{delayDays}d overdue
-                                              </div>
-                                              {/* small arrow pointing down */}
-                                              <div className="mx-auto w-0 h-0" style={{ borderLeft: '4px solid transparent', borderRight: '4px solid transparent', borderTop: '4px solid rgba(239,68,68,0.9)' }} />
-                                            </div>
-                                          </>
-                                        );
-                                      })()}
-
-                                      {/* ── Layer 2: Ghost window (Start → Deadline) ── */}
+                                      {/* ── Layer 1: Start → Deadline window ── */}
                                       {range.plannedWidth > 0 && (
                                         <div
-                                          className="absolute top-1/2 -translate-y-1/2 rounded-2xl border border-dashed border-primary/20 bg-primary/[0.04] pointer-events-none"
-                                          style={{ left: `${range.start}%`, width: `${range.plannedWidth}%`, height: 20 }}
+                                          className="absolute top-1/2 -translate-y-1/2 rounded-full border border-primary/15 bg-muted/35 pointer-events-none"
+                                          style={{ left: `${range.start}%`, width: `${range.plannedWidth}%`, height: 18 }}
                                         >
                                           {/* deadline tick */}
                                           <div className="absolute right-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-amber-400/60 rounded-full" />
                                         </div>
                                       )}
 
-                                      {/* ── Layer 3: Execution bar (Start → Done/Now) ── */}
-                                      {range.actualWidth > 0 && (
+                                      {/* ── Layer 2: Deadline → Present window (if not done & overdue) ── */}
+                                      {showOverdueWindow && (
+                                        <div
+                                          className="absolute top-1/2 -translate-y-1/2 rounded-r-full border border-red-500/20 bg-red-500/10 pointer-events-none"
+                                          style={{ left: `${range.deadlinePct}%`, width: `${range.delayWidth}%`, height: 18 }}
+                                        />
+                                      )}
+
+                                      {/* ── Layer 3: Completed path (Start → Closed time) ── */}
+                                      {task.status === 'done' && completedWidthPct > 0 && (
+                                        <div
+                                          className="absolute top-1/2 -translate-y-1/2 rounded-full border border-emerald-400/30 bg-emerald-500/15 pointer-events-none"
+                                          style={{ left: `${range.start}%`, width: `${completedWidthPct}%`, height: 18 }}
+                                        >
+                                          <div className="absolute inset-0 rounded-full bg-gradient-to-r from-emerald-500/25 to-teal-500/15" />
+                                        </div>
+                                      )}
+
+                                      {/* ── Layer 4: Tracked window rail (for logged timing context) ── */}
+                                      {trackedWindowWidth > 0 && (
+                                        <div
+                                          className="absolute top-1/2 -translate-y-1/2 rounded-full bg-primary/5 border border-primary/10 pointer-events-none"
+                                          style={{ left: `${range.start}%`, width: `${trackedWindowWidth}%`, height: 10 }}
+                                        />
+                                      )}
+
+                                      {/* ── Layer 5: Logged timing slices from actual time-entry timestamps ── */}
+                                      {loggedSlices.length > 0 && (
+                                        <>
+                                          {loggedSlices.map(slice => (
+                                            <div
+                                              key={slice.id}
+                                              className="absolute top-1/2 -translate-y-1/2 rounded-full bg-gradient-to-r from-cyan-400/85 to-blue-400/85 border border-cyan-200/20 shadow-[0_0_0_1px_rgba(8,47,73,0.25)] pointer-events-none"
+                                              style={{ left: `${slice.left}%`, width: `${slice.width}%`, height: 12 }}
+                                            >
+                                              <div className="absolute inset-0 rounded-full bg-[repeating-linear-gradient(45deg,transparent,transparent_5px,rgba(255,255,255,0.22)_5px,rgba(255,255,255,0.22)_8px)]" />
+                                            </div>
+                                          ))}
+                                        </>
+                                      )}
+
+                                      {/* ── Layer 6: Fallback summary fill if no timestamped slices are visible ── */}
+                                      {loggedSlices.length === 0 && trackedWindowWidth > 0 && loggedMins > 0 && task.estimatedDuration && task.estimatedDuration > 0 && (
                                         <div
                                           className={cn('absolute top-1/2 -translate-y-1/2 rounded-2xl bg-gradient-to-r overflow-hidden shadow-sm transition-all group-hover/bar:shadow-md', statusGradient(task.status))}
-                                          style={{ left: `${range.start}%`, width: `${Math.min(range.actualWidth, range.plannedWidth + range.delayWidth || 100)}%`, height: 28 }}
+                                          style={{ left: `${range.start}%`, width: `${Math.min(trackedWindowWidth, (trackedWindowWidth * Math.min(100, (loggedMins / task.estimatedDuration) * 100)) / 100)}%`, height: 12 }}
                                         >
-                                          {/* shine */}
                                           <div className="absolute inset-0 bg-gradient-to-b from-white/20 to-transparent rounded-2xl pointer-events-none" />
-
-                                          {/* logged-work inner fill */}
-                                          {loggedMins > 0 && task.estimatedDuration && task.estimatedDuration > 0 && (
-                                            <div
-                                              className="absolute left-0 top-0 bottom-0 bg-white/20 rounded-l-2xl pointer-events-none"
-                                              style={{ width: `${Math.min(100, (loggedMins / task.estimatedDuration) * 100)}%` }}
-                                            />
-                                          )}
-
-                                          {/* overrun stripe (when past deadline) */}
-                                          {range.isOverrun && (
-                                            <div className="absolute right-0 top-0 bottom-0 w-6 bg-[repeating-linear-gradient(45deg,transparent,transparent_3px,rgba(239,68,68,0.4)_3px,rgba(239,68,68,0.4)_6px)] rounded-r-2xl" />
-                                          )}
-
-                                          {/* task title inside bar */}
-                                          <div className="absolute inset-0 flex items-center px-2.5 overflow-hidden pointer-events-none">
-                                            <span className="text-[8px] font-black text-white/85 truncate tracking-tight leading-none whitespace-nowrap opacity-0 group-hover/bar:opacity-100 transition-opacity">
-                                              {task.title}
-                                            </span>
-                                          </div>
                                         </div>
+                                      )}
+
+                                      {/* ── Layer 7: closed-time marker (done tasks) ── */}
+                                      {task.status === 'done' && completedWidthPct > 0 && (
+                                        <div
+                                          className="absolute top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-full bg-emerald-300/70 pointer-events-none z-30"
+                                          style={{ left: `${actualEndPct}%`, transform: 'translateX(-50%)' }}
+                                        />
                                       )}
 
                                       {/* ── Hover edge labels ── */}
@@ -1064,6 +1207,7 @@ export default function GanttViewPage() {
 
                             {/* ── Sleep rows (only in Personal section) ────── */}
                             {projectId === '__none__' && filteredSleepEntries.length > 0 && (
+                              viewMode === 'day' ? (
                               <div className="border-t border-indigo-500/10">
                                 {/* Sleep sub-header */}
                                 <div
@@ -1244,6 +1388,124 @@ export default function GanttViewPage() {
                                   );
                                 })}
                               </div>
+                            ) : (
+                              /* ── Monthly/Quarter: single consolidated heatmap+bar row ── */
+                              <div className="border-t border-indigo-500/10">
+                                {/* Sleep sub-header */}
+                                <div
+                                  className="border-b border-indigo-500/10 bg-gradient-to-r from-indigo-500/5 to-transparent"
+                                  style={{ display: 'grid', gridTemplateColumns: `${SIDEBAR_PX}px 1fr`, width: contentWidth }}
+                                >
+                                  <div className="shrink-0 px-5 py-1.5 sticky left-0 bg-background/90 backdrop-blur-xl z-40 border-r border-indigo-500/10 flex items-center gap-2">
+                                    <Moon className="h-3 w-3 text-indigo-400/70" />
+                                    <span className="text-[9px] font-black uppercase tracking-[0.2em] text-indigo-400/60">Sleep</span>
+                                    <Badge variant="outline" className="ml-auto text-[8px] font-black border-indigo-500/20 bg-indigo-500/8 text-indigo-400/70 py-0 h-4 shrink-0">
+                                      {filteredSleepEntries.length}
+                                    </Badge>
+                                  </div>
+                                  <div style={{ display: 'grid', gridTemplateColumns: `repeat(${timeSlots.length}, minmax(${COL_PX * zoomLevel}px, 1fr))`, height: 24 }}>
+                                    {slotDayGroups.map((g, gi) => {
+                                      const startIdx = timeSlots.findIndex(s => s.getTime() === g.slots[0].getTime()) + 1;
+                                      return <div key={gi} className="border-r border-indigo-500/5 last:border-r-0" style={{ gridColumnStart: startIdx, gridColumnEnd: `span ${g.slots.length}` }} />;
+                                    })}
+                                  </div>
+                                </div>
+                                {/* Single consolidated row */}
+                                <motion.div
+                                  initial={{ opacity: 0, x: -4 }}
+                                  animate={{ opacity: 1, x: 0 }}
+                                  className={cn('border-b border-indigo-500/5 group/sleeprow hover:bg-indigo-500/[0.02] transition-colors relative', (isMarqueeMode || isPanning) && 'pointer-events-none')}
+                                  style={{ height: ROW_H, display: 'grid', gridTemplateColumns: `${SIDEBAR_PX}px 1fr` }}
+                                >
+                                  <div className="shrink-0 px-5 sticky left-0 bg-background/95 backdrop-blur-xl z-50 border-r border-indigo-500/10 flex items-center">
+                                    <div className="flex items-center gap-3 w-full min-w-0">
+                                      <div className="shrink-0 h-9 w-9 rounded-2xl flex items-center justify-center ring-2 ring-indigo-500/20 bg-indigo-500/10 text-indigo-400">
+                                        <Moon className="h-4 w-4" />
+                                      </div>
+                                      <div className="min-w-0 flex-1">
+                                        <span className="text-[11px] font-black truncate block tracking-tight text-indigo-300/80">Sleep Log</span>
+                                        <div className="flex items-center gap-1.5 mt-1">
+                                          <span className="text-[8px] font-black text-muted-foreground/40 tabular-nums">{filteredSleepEntries.length}d recorded</span>
+                                          {filteredSleepEntries.length > 0 && (
+                                            <span className="text-[8px] font-black text-indigo-400/60">
+                                              avg {Math.round(filteredSleepEntries.reduce((a, e) => a + e.durationMins, 0) / filteredSleepEntries.length / 60 * 10) / 10}h
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div
+                                    className="relative"
+                                    style={{ display: 'grid', gridTemplateColumns: `repeat(${timeSlots.length}, minmax(${COL_PX * zoomLevel}px, 1fr))` }}
+                                  >
+                                    {/* Day heatmap cells */}
+                                    {slotDayGroups.map((g, gi) => {
+                                      const startIdx = timeSlots.findIndex(s => s.getTime() === g.slots[0].getTime()) + 1;
+                                      const dayKey = format(g.date, 'yyyy-MM-dd');
+                                      const dayEntries = sleepByDay[dayKey] || [];
+                                      const bestEntry = dayEntries.length > 0 ? [...dayEntries].sort((a, b) => b.quality - a.quality)[0] : null;
+                                      const isToday = isSameDay(g.date, new Date());
+                                      return (
+                                        <div
+                                          key={gi}
+                                          className="relative flex border-r border-primary/10 last:border-r-0 h-full transition-colors"
+                                          style={{
+                                            gridColumn: `${startIdx} / span ${g.slots.length}`,
+                                            background: bestEntry ? sleepQualityHeatmap(bestEntry.quality) : isToday ? 'rgba(var(--primary),0.02)' : 'transparent',
+                                            borderBottom: bestEntry ? `2px solid ${sleepQualityBorder(bestEntry.quality)}` : undefined,
+                                          }}
+                                        />
+                                      );
+                                    })}
+                                    {/* Today line */}
+                                    {isWithinInterval(new Date(), dateRange) && (
+                                      <div
+                                        className="absolute top-0 bottom-0 w-px bg-primary/40 z-[5] pointer-events-none"
+                                        style={{ left: `${Math.min(99.9, ((Date.now() - dateRange.start.getTime()) / (dateRange.end.getTime() - dateRange.start.getTime())) * 100)}%` }}
+                                      >
+                                        <div className="absolute -top-0.5 -left-[3px] w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                                      </div>
+                                    )}
+                                    {/* Mini bars per entry */}
+                                    {filteredSleepEntries.map((entry) => {
+                                      const pos = getSleepBarPositions(entry);
+                                      if (pos.width <= 0) return null;
+                                      const h = Math.floor(entry.durationMins / 60);
+                                      const m = entry.durationMins % 60;
+                                      return (
+                                        <div
+                                          key={entry.id}
+                                          className="absolute top-1/2 -translate-y-1/2 z-20 group/sleepbar cursor-default"
+                                          style={{ left: `${pos.start}%`, width: `${pos.width}%`, height: ROW_H }}
+                                          onMouseEnter={() => { setHoveredTask(null); setHoveredSleep({ entry }); }}
+                                          onMouseLeave={() => setHoveredSleep(null)}
+                                          onMouseMove={e => setMousePos({ x: e.clientX, y: e.clientY })}
+                                        >
+                                          <div
+                                            className="absolute top-1/2 -translate-y-1/2 w-full rounded-xl overflow-hidden shadow-md shadow-indigo-500/20 transition-all group-hover/sleepbar:shadow-indigo-500/40 group-hover/sleepbar:scale-y-110"
+                                            style={{ height: 20, background: 'linear-gradient(90deg, rgb(99,102,241), rgb(139,92,246), rgb(168,85,247))', opacity: 0.85 }}
+                                          >
+                                            <div className="absolute inset-0 bg-gradient-to-b from-white/25 to-transparent pointer-events-none" />
+                                            <div className="absolute inset-0 flex items-center justify-center gap-0.5 pointer-events-none">
+                                              {[1,2,3,4,5].map(s => <Star key={s} className={cn('h-2 w-2 opacity-0 group-hover/sleepbar:opacity-100 transition-opacity', s <= entry.quality ? 'fill-white text-white' : 'text-white/20')} />)}
+                                            </div>
+                                          </div>
+                                          <div className="absolute inset-0 opacity-0 group-hover/sleepbar:opacity-100 transition-opacity pointer-events-none" style={{ top: -22 }}>
+                                            <div className="absolute text-[8px] font-black text-indigo-400/80 whitespace-nowrap bg-background/90 backdrop-blur-sm px-1.5 py-0.5 rounded-md border border-indigo-500/20 shadow-sm" style={{ left: '0%' }}>
+                                              {format(new Date(entry.bedtime), 'MMM d HH:mm')}
+                                            </div>
+                                            <div className="absolute text-[8px] font-black text-amber-400/80 whitespace-nowrap bg-background/90 backdrop-blur-sm px-1.5 py-0.5 rounded-md border border-amber-500/20 shadow-sm" style={{ right: '0%' }}>
+                                              {h}h{m > 0 ? ` ${m}m` : ''}
+                                            </div>
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </motion.div>
+                              </div>
+                            )
                             )}
                           </div>
                         );
@@ -1252,6 +1514,7 @@ export default function GanttViewPage() {
 
                     {/* ── Standalone sleep section (when no tasks at all but sleep exists) ── */}
                     {Object.keys(tasksByProject).length === 0 && filteredSleepEntries.length > 0 && (
+                      viewMode === 'day' ? (
                       <div className="border-b border-indigo-500/10">
                         <div
                           className="border-b border-indigo-500/10 bg-gradient-to-r from-indigo-500/8 to-transparent"
@@ -1322,29 +1585,18 @@ export default function GanttViewPage() {
                                   );
                                 })}
                                 {sleepPos.width > 0 && (
-                                  <div
-                                    className="absolute top-1/2 -translate-y-1/2 z-20 group/sleepbar cursor-default"
-                                    style={{ left: 0, right: 0, height: ROW_H }}
-                                    onMouseEnter={() => { setHoveredTask(null); setHoveredSleep({ entry }); }}
-                                    onMouseLeave={() => setHoveredSleep(null)}
-                                    onMouseMove={e => setMousePos({ x: e.clientX, y: e.clientY })}
-                                  >
-                                    <div
-                                      className="absolute top-1/2 -translate-y-1/2 rounded-2xl overflow-hidden shadow-md shadow-indigo-500/20 transition-all group-hover/sleepbar:shadow-indigo-500/40 z-10"
-                                      style={{ left: `${sleepPos.start}%`, width: `${sleepPos.width}%`, height: 28, background: 'linear-gradient(90deg, rgb(99,102,241), rgb(139,92,246), rgb(168,85,247))' }}
-                                    >
+                                  <div className="absolute top-1/2 -translate-y-1/2 z-20 group/sleepbar cursor-default" style={{ left: 0, right: 0, height: ROW_H }}
+                                    onMouseEnter={() => { setHoveredTask(null); setHoveredSleep({ entry }); }} onMouseLeave={() => setHoveredSleep(null)} onMouseMove={e => setMousePos({ x: e.clientX, y: e.clientY })}>
+                                    <div className="absolute top-1/2 -translate-y-1/2 rounded-2xl overflow-hidden shadow-md shadow-indigo-500/20 transition-all group-hover/sleepbar:shadow-indigo-500/40 z-10"
+                                      style={{ left: `${sleepPos.start}%`, width: `${sleepPos.width}%`, height: 28, background: 'linear-gradient(90deg, rgb(99,102,241), rgb(139,92,246), rgb(168,85,247))' }}>
                                       <div className="absolute inset-0 bg-gradient-to-b from-white/25 to-transparent pointer-events-none" />
                                       <div className="absolute inset-0 flex items-center px-2.5 pointer-events-none">
                                         <span className="text-[8px] font-black text-white/90 truncate opacity-0 group-hover/sleepbar:opacity-100 transition-opacity">{h}h{m > 0 ? ` ${m}m` : ''} · {sleepQualityLabel(entry.quality)}</span>
                                       </div>
                                     </div>
                                     <div className="absolute inset-0 opacity-0 group-hover/sleepbar:opacity-100 transition-opacity pointer-events-none" style={{ top: -22 }}>
-                                      <div className="absolute text-[8px] font-black text-indigo-400/80 whitespace-nowrap bg-background/90 backdrop-blur-sm px-1.5 py-0.5 rounded-md border border-indigo-500/20 shadow-sm" style={{ left: `${sleepPos.start}%` }}>
-                                        {format(bedtime, 'HH:mm')}
-                                      </div>
-                                      <div className="absolute text-[8px] font-black text-amber-400/80 whitespace-nowrap bg-background/90 backdrop-blur-sm px-1.5 py-0.5 rounded-md border border-amber-500/20 shadow-sm" style={{ left: `${sleepPos.start + sleepPos.width}%`, transform: 'translateX(-100%)' }}>
-                                        {format(wakeTime, 'HH:mm')}
-                                      </div>
+                                      <div className="absolute text-[8px] font-black text-indigo-400/80 whitespace-nowrap bg-background/90 backdrop-blur-sm px-1.5 py-0.5 rounded-md border border-indigo-500/20 shadow-sm" style={{ left: `${sleepPos.start}%` }}>{format(bedtime, 'HH:mm')}</div>
+                                      <div className="absolute text-[8px] font-black text-amber-400/80 whitespace-nowrap bg-background/90 backdrop-blur-sm px-1.5 py-0.5 rounded-md border border-amber-500/20 shadow-sm" style={{ left: `${sleepPos.start + sleepPos.width}%`, transform: 'translateX(-100%)' }}>{format(wakeTime, 'HH:mm')}</div>
                                     </div>
                                   </div>
                                 )}
@@ -1353,6 +1605,71 @@ export default function GanttViewPage() {
                           );
                         })}
                       </div>
+                      ) : (
+                      /* Monthly/Quarter standalone: consolidated heatmap+bar row */
+                      <div className="border-b border-indigo-500/10">
+                        <div className="border-b border-indigo-500/10 bg-gradient-to-r from-indigo-500/8 to-transparent" style={{ display: 'grid', gridTemplateColumns: `${SIDEBAR_PX}px 1fr`, width: contentWidth }}>
+                          <div className="shrink-0 px-5 py-2.5 sticky left-0 bg-background/90 backdrop-blur-xl z-40 border-r border-indigo-500/10 flex items-center gap-2">
+                            <Moon className="h-3.5 w-3.5 text-indigo-400/70" />
+                            <span className="text-[10px] font-black uppercase tracking-widest text-indigo-400/60">Personal · Sleep</span>
+                            <Badge variant="outline" className="ml-auto text-[8px] font-black border-indigo-500/20 bg-indigo-500/8 text-indigo-400/70 py-0 h-4 shrink-0">{filteredSleepEntries.length}</Badge>
+                          </div>
+                          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${timeSlots.length}, minmax(${COL_PX * zoomLevel}px, 1fr))`, height: 32 }}>
+                            {slotDayGroups.map((g, gi) => { const startIdx = timeSlots.findIndex(s => s.getTime() === g.slots[0].getTime()) + 1; return <div key={gi} className="border-r border-indigo-500/5 last:border-r-0" style={{ gridColumnStart: startIdx, gridColumnEnd: `span ${g.slots.length}` }} />; })}
+                          </div>
+                        </div>
+                        <motion.div initial={{ opacity: 0, x: -4 }} animate={{ opacity: 1, x: 0 }} className={cn('border-b border-indigo-500/5 group/sleeprow hover:bg-indigo-500/[0.02] transition-colors relative', (isMarqueeMode || isPanning) && 'pointer-events-none')} style={{ height: ROW_H, display: 'grid', gridTemplateColumns: `${SIDEBAR_PX}px 1fr` }}>
+                          <div className="shrink-0 px-5 sticky left-0 bg-background/95 backdrop-blur-xl z-50 border-r border-indigo-500/10 flex items-center">
+                            <div className="flex items-center gap-3 w-full min-w-0">
+                              <div className="shrink-0 h-9 w-9 rounded-2xl flex items-center justify-center ring-2 ring-indigo-500/20 bg-indigo-500/10 text-indigo-400"><Moon className="h-4 w-4" /></div>
+                              <div className="min-w-0 flex-1">
+                                <span className="text-[11px] font-black truncate block tracking-tight text-indigo-300/80">Sleep Log</span>
+                                <div className="flex items-center gap-1.5 mt-1">
+                                  <span className="text-[8px] font-black text-muted-foreground/40 tabular-nums">{filteredSleepEntries.length}d recorded</span>
+                                  {filteredSleepEntries.length > 0 && <span className="text-[8px] font-black text-indigo-400/60">avg {Math.round(filteredSleepEntries.reduce((a, e) => a + e.durationMins, 0) / filteredSleepEntries.length / 60 * 10) / 10}h</span>}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="relative" style={{ display: 'grid', gridTemplateColumns: `repeat(${timeSlots.length}, minmax(${COL_PX * zoomLevel}px, 1fr))` }}>
+                            {slotDayGroups.map((g, gi) => {
+                              const startIdx = timeSlots.findIndex(s => s.getTime() === g.slots[0].getTime()) + 1;
+                              const dayKey = format(g.date, 'yyyy-MM-dd');
+                              const dayEntries = sleepByDay[dayKey] || [];
+                              const bestEntry = dayEntries.length > 0 ? [...dayEntries].sort((a, b) => b.quality - a.quality)[0] : null;
+                              const isToday = isSameDay(g.date, new Date());
+                              return <div key={gi} className="relative flex border-r border-primary/10 last:border-r-0 h-full transition-colors" style={{ gridColumn: `${startIdx} / span ${g.slots.length}`, background: bestEntry ? sleepQualityHeatmap(bestEntry.quality) : isToday ? 'rgba(var(--primary),0.02)' : 'transparent', borderBottom: bestEntry ? `2px solid ${sleepQualityBorder(bestEntry.quality)}` : undefined }} />;
+                            })}
+                            {isWithinInterval(new Date(), dateRange) && (
+                              <div className="absolute top-0 bottom-0 w-px bg-primary/40 z-[5] pointer-events-none" style={{ left: `${Math.min(99.9, ((Date.now() - dateRange.start.getTime()) / (dateRange.end.getTime() - dateRange.start.getTime())) * 100)}%` }}>
+                                <div className="absolute -top-0.5 -left-[3px] w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                              </div>
+                            )}
+                            {filteredSleepEntries.map((entry) => {
+                              const pos = getSleepBarPositions(entry);
+                              if (pos.width <= 0) return null;
+                              const h = Math.floor(entry.durationMins / 60);
+                              const m = entry.durationMins % 60;
+                              return (
+                                <div key={entry.id} className="absolute top-1/2 -translate-y-1/2 z-20 group/sleepbar cursor-default" style={{ left: `${pos.start}%`, width: `${pos.width}%`, height: ROW_H }}
+                                  onMouseEnter={() => { setHoveredTask(null); setHoveredSleep({ entry }); }} onMouseLeave={() => setHoveredSleep(null)} onMouseMove={e => setMousePos({ x: e.clientX, y: e.clientY })}>
+                                  <div className="absolute top-1/2 -translate-y-1/2 w-full rounded-xl overflow-hidden shadow-md shadow-indigo-500/20 transition-all group-hover/sleepbar:shadow-indigo-500/40 group-hover/sleepbar:scale-y-110" style={{ height: 20, background: 'linear-gradient(90deg, rgb(99,102,241), rgb(139,92,246), rgb(168,85,247))', opacity: 0.85 }}>
+                                    <div className="absolute inset-0 bg-gradient-to-b from-white/25 to-transparent pointer-events-none" />
+                                    <div className="absolute inset-0 flex items-center justify-center gap-0.5 pointer-events-none">
+                                      {[1,2,3,4,5].map(s => <Star key={s} className={cn('h-2 w-2 opacity-0 group-hover/sleepbar:opacity-100 transition-opacity', s <= entry.quality ? 'fill-white text-white' : 'text-white/20')} />)}
+                                    </div>
+                                  </div>
+                                  <div className="absolute inset-0 opacity-0 group-hover/sleepbar:opacity-100 transition-opacity pointer-events-none" style={{ top: -22 }}>
+                                    <div className="absolute text-[8px] font-black text-indigo-400/80 whitespace-nowrap bg-background/90 backdrop-blur-sm px-1.5 py-0.5 rounded-md border border-indigo-500/20 shadow-sm" style={{ left: '0%' }}>{format(new Date(entry.bedtime), 'MMM d HH:mm')}</div>
+                                    <div className="absolute text-[8px] font-black text-amber-400/80 whitespace-nowrap bg-background/90 backdrop-blur-sm px-1.5 py-0.5 rounded-md border border-amber-500/20 shadow-sm" style={{ right: '0%' }}>{h}h{m > 0 ? ` ${m}m` : ''}</div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </motion.div>
+                      </div>
+                      )
                     )}
                   </div>
                 </CardContent>

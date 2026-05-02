@@ -52,7 +52,7 @@ import { cn } from '@/lib/utils';
 export default function ProjectPage() {
     const router = useRouter();
     const { projectId } = useParams() as { projectId: string };
-    const { projects, tasks, notes, goals, habits, timeEntries, deleteProject, userCache } = useStore();
+    const { projects, tasks, notes, goals, habits, timeEntries, deleteProject, userCache, sleepEntries } = useStore();
     const project = projects.find(p => p.id === projectId);
 
     const searchParams = useSearchParams();
@@ -621,17 +621,7 @@ export default function ProjectPage() {
 
                                         {taskViewMode === 'timeline' && (
                                             <div className="space-y-6">
-                                                <div className="flex items-center justify-between">
-                                                    <Button variant="outline" size="sm" className="h-8 rounded-xl font-black text-[9px] uppercase tracking-widest" onClick={() => setSelectedDate(new Date(selectedDate.getTime() - 86400000))}>
-                                                        Previous Day
-                                                    </Button>
-                                                    <div className="text-xs font-black uppercase tracking-widest text-primary italic">
-                                                        {format(selectedDate, 'MMMM d, yyyy')}
-                                                    </div>
-                                                    <Button variant="outline" size="sm" className="h-8 rounded-xl font-black text-[9px] uppercase tracking-widest" onClick={() => setSelectedDate(new Date(selectedDate.getTime() + 86400000))}>
-                                                        Next Day
-                                                    </Button>
-                                                </div>
+
                                                 <div className="bg-background/20 rounded-2xl overflow-hidden border border-primary/5">
                                                     {(() => {
                                                         const referencedGoalIds = new Set(filteredProjectTasks.map(t => t.goalId).filter(Boolean));
@@ -647,6 +637,7 @@ export default function ProjectPage() {
                                                                 timeEntries={projectTimeEntries}
                                                                 selectedDate={selectedDate}
                                                                 onDateChange={setSelectedDate}
+                                                                sleepEntries={sleepEntries}
                                                                 isProjectView={true}
                                                             />
                                                         );

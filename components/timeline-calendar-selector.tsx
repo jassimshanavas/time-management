@@ -186,27 +186,38 @@ export function TimelineCalendarSelector({ selectedDate, onDateChange, tasks, go
     ];
 
     return (
-        <Popover open={isOpen} onOpenChange={setIsOpen}>
-            <PopoverTrigger asChild>
-                <Button
-                    variant="outline"
-                    className={cn(
-                        "h-11 px-6 rounded-2xl border-primary/10 bg-background/40 backdrop-blur-md hover:bg-primary/5 transition-all duration-300 shadow-lg",
-                        isOpen && "ring-2 ring-primary/20"
-                    )}
-                >
-                    <Calendar className="h-4 w-4 mr-3 text-primary" />
-                    <span className="font-black text-sm tracking-tight">
-                        {format(selectedDate, 'MMM dd, yyyy')}
-                    </span>
-                    {productivityStreak > 0 && (
-                        <Badge className="ml-3 bg-orange-500/10 text-orange-500 border-orange-500/20 text-[9px] font-black px-2">
-                            <Flame className="h-2.5 w-2.5 mr-1" />
-                            {productivityStreak}
-                        </Badge>
-                    )}
-                </Button>
-            </PopoverTrigger>
+        <div className="flex items-center gap-1 bg-background/40 backdrop-blur-md border border-primary/10 rounded-2xl shadow-lg p-1">
+            <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => onDateChange(new Date(selectedDate.getTime() - 86400000))}
+                className="h-9 w-9 rounded-xl hover:bg-primary/10 text-muted-foreground hover:text-primary transition-colors"
+                title="Previous Day"
+            >
+                <ChevronLeft className="h-4 w-4" />
+            </Button>
+
+            <Popover open={isOpen} onOpenChange={setIsOpen}>
+                <PopoverTrigger asChild>
+                    <Button
+                        variant="ghost"
+                        className={cn(
+                            "h-9 px-4 rounded-xl hover:bg-primary/5 transition-all duration-300",
+                            isOpen && "bg-primary/10 text-primary"
+                        )}
+                    >
+                        <Calendar className="h-4 w-4 mr-2 text-primary/70" />
+                        <span className="font-black text-sm tracking-tight">
+                            {format(selectedDate, 'MMM dd, yyyy')}
+                        </span>
+                        {productivityStreak > 0 && (
+                            <Badge className="ml-2 bg-orange-500/10 text-orange-500 border-orange-500/20 text-[9px] font-black px-1.5 py-0">
+                                <Flame className="h-2.5 w-2.5 mr-1" />
+                                {productivityStreak}
+                            </Badge>
+                        )}
+                    </Button>
+                </PopoverTrigger>
 
             <PopoverContent
                 className="w-[480px] p-0 border-primary/10 bg-background/95 backdrop-blur-xl rounded-3xl shadow-2xl"
@@ -510,5 +521,16 @@ export function TimelineCalendarSelector({ selectedDate, onDateChange, tasks, go
                 </motion.div>
             </PopoverContent>
         </Popover>
+        
+        <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => onDateChange(new Date(selectedDate.getTime() + 86400000))}
+            className="h-9 w-9 rounded-xl hover:bg-primary/10 text-muted-foreground hover:text-primary transition-colors"
+            title="Next Day"
+        >
+            <ChevronRight className="h-4 w-4" />
+        </Button>
+    </div>
     );
 }

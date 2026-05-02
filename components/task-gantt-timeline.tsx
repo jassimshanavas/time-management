@@ -1,11 +1,12 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Task, Goal, TimeEntry } from '@/types';
+import { Task, Goal, TimeEntry, SleepEntry } from '@/types';
 import {
   format,
   startOfDay,
@@ -19,7 +20,7 @@ import {
   min,
   max
 } from 'date-fns';
-import { Clock, CheckCircle2, Circle, AlertCircle, ChevronDown, ChevronRight, Filter, Target, TrendingUp, Zap, History, ZoomIn, ZoomOut, RotateCcw, Minimize2, Maximize2, Camera } from 'lucide-react';
+import { Clock, CheckCircle2, Circle, AlertCircle, ChevronDown, ChevronRight, ChevronLeft, Filter, Target, TrendingUp, Zap, History, ZoomIn, ZoomOut, RotateCcw, Minimize2, Maximize2, Camera, Plus, Calendar as CalendarIcon, Moon } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -39,6 +40,7 @@ interface TaskGanttTimelineProps {
   tasks: Task[];
   goals: Goal[];
   timeEntries?: TimeEntry[];
+  sleepEntries?: SleepEntry[];
   selectedDate: Date;
   onDateChange?: (date: Date) => void;
   isProjectView?: boolean;
@@ -58,7 +60,25 @@ const ROW_HEADER_HEIGHT = 80;
 const ROW_HEADER_EXPANDED_HEIGHT = 180;
 const TASK_SUB_ROW_HEIGHT = 60;
 
-export function TaskGanttTimeline({ tasks, goals, timeEntries = [], selectedDate, onDateChange, isProjectView = false }: TaskGanttTimelineProps) {
+function statusGradient(status: string) {
+  switch (status) {
+    case 'done':
+      return 'from-emerald-500 to-teal-500';
+    case 'in-progress':
+      return 'from-blue-500 to-indigo-500';
+    default:
+      return 'from-slate-500/60 to-slate-600/60';
+  }
+}
+
+function formatMin(mins: number) {
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
+}
+
+export function TaskGanttTimeline({ tasks, goals, timeEntries = [], sleepEntries = [], selectedDate, onDateChange, isProjectView = false }: TaskGanttTimelineProps) {
   const router = useRouter();
   const [currentTime, setCurrentTime] = useState(new Date());
   const [expandedGoals, setExpandedGoals] = useState<Set<string>>(new Set(['ungrouped', ...goals.map(g => g.id)]));
@@ -78,7 +98,20 @@ export function TaskGanttTimeline({ tasks, goals, timeEntries = [], selectedDate
   const [isSelecting, setIsSelecting] = useState(false);
   const [selectionRange, setSelectionRange] = useState<{ start: number; end: number } | null>(null);
   const [isModalExpanded, setIsModalExpanded] = useState(false);
+  const [hoveredTask, setHoveredTask] = useState<{
+    task: Task;
+    loggedMins: number;
+    util: number;
+    goal: Goal | null;
+  } | null>(null);
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  const [isSidebarMinimized, setIsSidebarMinimized] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const timelineRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Update current time every minute
   useEffect(() => {
@@ -594,14 +627,42 @@ export function TaskGanttTimeline({ tasks, goals, timeEntries = [], selectedDate
         )}
       </AnimatePresence>
 
+      {/* Timeline Visual Legend */}
+      <div className="flex flex-wrap items-center gap-6 px-4 py-3 mt-2 mb-2 text-[9px] font-black uppercase tracking-widest text-muted-foreground/60 bg-background/20 backdrop-blur-sm rounded-2xl border border-primary/5">
+        <span className="text-primary/40 mr-2">Legend:</span>
+        <div className="flex items-center gap-2.5">
+          <div className="w-5 h-4 rounded-md border border-primary/40 opacity-70" style={{ backgroundImage: 'repeating-linear-gradient(-45deg, rgba(var(--primary), 0.3) 0px, rgba(var(--primary), 0.3) 2px, transparent 2px, transparent 8px)' }} />
+          <span>Task Lifetime Window</span>
+        </div>
+        <div className="flex items-center gap-2.5">
+          <div className="w-5 h-4 rounded-md bg-primary/20 border-l-2 border-primary shadow-sm" />
+          <span>Scheduled Block</span>
+        </div>
+        <div className="flex items-center gap-2.5">
+          <div className="w-5 h-4 rounded-md opacity-60" style={{ backgroundImage: 'repeating-linear-gradient(45deg, rgba(239,68,68,0.4) 0px, rgba(239,68,68,0.4) 4px, transparent 4px, transparent 8px)' }} />
+          <span>Overdue Period</span>
+        </div>
+        <div className="flex items-center gap-2.5">
+          <div className="w-5 h-1.5 rounded-full bg-gradient-to-r from-orange-400 to-rose-400 shadow-[0_0_8px_rgba(249,115,22,0.5)]" />
+          <span>Live Execution</span>
+        </div>
+        <div className="flex items-center gap-2.5">
+          <div className="w-5 h-1.5 rounded-full bg-primary/40 border border-primary/30" />
+          <span>Logged Time</span>
+        </div>
+      </div>
+
       {/* Gantt Timeline */}
       <Card className="overflow-hidden bg-background/40 backdrop-blur-xl border-primary/10 rounded-[2rem] shadow-2xl">
         <CardContent className="p-0">
-          <div className="flex flex-col lg:flex-row overflow-y-auto custom-scrollbar scroll-smooth" style={{ height: '650px' }}>
+          <div className="flex flex-col lg:flex-row overflow-y-auto overflow-x-hidden custom-scrollbar scroll-smooth" style={{ height: '650px' }}>
             {/* Unified Vertical Scroll Container */}
-            <div className="flex-1 flex flex-col lg:flex-row relative">
+            <div className="flex-1 flex flex-col lg:flex-row relative min-w-0">
               {/* Left sidebar - Hierarchy */}
-              <div className="w-full lg:w-80 bg-muted/20 border-r border-primary/5 flex-shrink-0 z-30">
+              <div className={cn(
+                "bg-muted/20 border-r border-primary/5 flex-shrink-0 z-30 min-w-0 transition-all duration-300 relative group/sidebar",
+                isSidebarMinimized ? "w-14" : "w-full lg:w-80"
+              )}>
                 <AnimatePresence mode="wait">
                   <motion.div
                     key={filters.viewMode}
@@ -611,7 +672,21 @@ export function TaskGanttTimeline({ tasks, goals, timeEntries = [], selectedDate
                     transition={{ duration: 0.3, ease: "easeOut" }}
                   >
                     {/* Header Spacer to align with timeline header */}
-                    <div className="sticky top-0 h-[58px] border-b border-primary/5 bg-muted/20 z-40" />
+                    <div className={cn(
+                      "sticky top-0 h-[58px] border-b border-primary/5 bg-muted/20 z-40 flex items-center transition-all duration-300",
+                      isSidebarMinimized ? "justify-center" : "justify-end px-3"
+                    )}>
+                      {/* Sidebar Toggle Button */}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setIsSidebarMinimized(!isSidebarMinimized)}
+                        className="h-8 w-8 rounded-xl hover:bg-primary/10 text-muted-foreground hover:text-primary transition-all duration-300 shadow-sm border border-transparent hover:border-primary/10 bg-background/40 backdrop-blur-sm"
+                        title={isSidebarMinimized ? "Expand Sidebar" : "Minimize Sidebar"}
+                      >
+                        {isSidebarMinimized ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+                      </Button>
+                    </div>
 
                     {groupedTasks.map((group) => {
                       const isExpanded = expandedGoals.has(group.goalId || 'ungrouped') || filters.viewMode === 'tasks';
@@ -622,13 +697,14 @@ export function TaskGanttTimeline({ tasks, goals, timeEntries = [], selectedDate
                           {/* Row Header */}
                           <div
                             className={cn(
-                              "px-5 cursor-pointer transition-all duration-300 hover:bg-primary/5 flex flex-col justify-center",
+                              "cursor-pointer transition-all duration-300 hover:bg-primary/5 flex flex-col justify-center",
+                              isSidebarMinimized ? "px-2 items-center" : "px-5",
                               filters.viewMode === 'tasks' ? "h-[80px]" : (isExpanded ? "h-[180px]" : "h-[80px]")
                             )}
                             onClick={() => filters.viewMode === 'goals' && toggleGoal(groupId)}
                           >
-                            <div className="flex items-start gap-4">
-                              {filters.viewMode === 'goals' && (
+                            <div className={cn("flex items-start w-full min-w-0", isSidebarMinimized ? "justify-center" : "gap-4")}>
+                              {filters.viewMode === 'goals' && !isSidebarMinimized && (
                                 <div className="h-6 w-6 mt-1 flex items-center justify-center rounded-lg bg-primary/5 text-primary group-hover:scale-110 transition-transform">
                                   {isExpanded ? (
                                     <ChevronDown className="h-4 w-4" />
@@ -638,8 +714,16 @@ export function TaskGanttTimeline({ tasks, goals, timeEntries = [], selectedDate
                                 </div>
                               )}
 
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-3 mb-2">
+                              {isSidebarMinimized && (
+                                <div
+                                  className="w-3 h-3 rounded-full ring-4 ring-offset-2 ring-offset-background flex-shrink-0 mt-2"
+                                  style={{ backgroundColor: group.goalColor, ringColor: `${group.goalColor}30` } as any}
+                                  title={group.goalTitle}
+                                />
+                              )}
+
+                              <div className={cn("flex-1 min-w-0", isSidebarMinimized && "hidden")}>
+                                <div className="flex items-center gap-3 mb-2 w-full min-w-0">
                                   <div
                                     className="w-2.5 h-2.5 rounded-full ring-4 ring-offset-2 ring-offset-background"
                                     style={{ backgroundColor: group.goalColor, ringColor: `${group.goalColor}30` } as any}
@@ -732,7 +816,10 @@ export function TaskGanttTimeline({ tasks, goals, timeEntries = [], selectedDate
                               {group.tasks.map((task) => (
                                 <div
                                   key={task.id}
-                                  className="px-5 h-[60px] flex items-center hover:bg-background/80 transition-all duration-300 cursor-pointer border-b border-white/5 group/item"
+                                  className={cn(
+                                    "h-[60px] flex items-center hover:bg-background/80 transition-all duration-300 cursor-pointer border-b border-white/5 group/item w-full min-w-0",
+                                    isSidebarMinimized ? "px-0 justify-center" : "px-5"
+                                  )}
                                   onClick={() => {
                                     const params = new URLSearchParams();
                                     params.set('fromView', 'timeline');
@@ -744,13 +831,13 @@ export function TaskGanttTimeline({ tasks, goals, timeEntries = [], selectedDate
                                     router.push(`/tasks/${task.id}?${params.toString()}`);
                                   }}
                                 >
-                                  <div className="flex items-center gap-4 ml-6">
+                                  <div className={cn("flex items-center flex-1 min-w-0", isSidebarMinimized ? "justify-center" : "gap-4 ml-6")}>
                                     <div className={cn(
                                       "h-2 w-2 rounded-full",
                                       task.status === 'done' ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" :
                                         task.status === 'in-progress' ? "bg-blue-500 animate-pulse" : "bg-muted-foreground/40"
-                                    )} />
-                                    <div className="flex-1 min-w-0">
+                                    )} title={isSidebarMinimized ? task.title : undefined} />
+                                    <div className={cn("flex-1 min-w-0", isSidebarMinimized && "hidden")}>
                                       <p className="text-xs font-bold truncate group-hover/item:text-primary transition-colors tracking-tight">{task.title}</p>
                                       <div className="flex items-center gap-2 mt-0.5 opacity-60">
                                         <span className="text-[10px] font-black uppercase tracking-tighter">
@@ -786,7 +873,7 @@ export function TaskGanttTimeline({ tasks, goals, timeEntries = [], selectedDate
               <div
                 ref={timelineRef}
                 className={cn(
-                  "flex-1 relative bg-background/5 overflow-x-auto custom-scrollbar select-none scroll-smooth transition-all duration-300",
+                  "flex-1 relative bg-background/5 overflow-x-auto custom-scrollbar select-none scroll-smooth transition-all duration-300 min-w-0",
                   isZoomMarqueeMode ? "cursor-zoom-in bg-primary/5" : "cursor-grab active:cursor-grabbing"
                 )}
                 style={{
@@ -877,7 +964,7 @@ export function TaskGanttTimeline({ tasks, goals, timeEntries = [], selectedDate
 
                   {/* Time Oracle Header */}
                   <div className="sticky top-0 z-40 bg-background/60 backdrop-blur-xl border-b border-primary/5 flex shadow-xl shadow-background/20">
-                    {Array.from({ length: 25 }).map((_, hour) => (
+                    {Array.from({ length: 24 }).map((_, hour) => (
                       <div
                         key={hour}
                         className="flex-1 min-w-[30px] border-r border-primary/5 p-4 text-center group/slot relative"
@@ -904,6 +991,42 @@ export function TaskGanttTimeline({ tasks, goals, timeEntries = [], selectedDate
                       return total + headerHeight + tasksHeight;
                     }, 0)}px`
                   }}>
+                    {/* SLEEP SHADING BACKGROUND */}
+                    {sleepEntries && sleepEntries.length > 0 && sleepEntries.map((dailySleep) => {
+                      const bTime = typeof dailySleep.bedtime === 'string' ? parseISO(dailySleep.bedtime) : dailySleep.bedtime;
+                      const wTime = typeof dailySleep.wakeTime === 'string' ? parseISO(dailySleep.wakeTime) : dailySleep.wakeTime;
+                      
+                      const viewStart = startOfDay(selectedDate);
+                      const viewEnd = new Date(viewStart.getTime() + 24 * 60 * 60 * 1000); // exactly 24h later
+
+                      // Check overlap between [bTime, wTime] and [viewStart, viewEnd]
+                      if (wTime.getTime() <= viewStart.getTime() || bTime.getTime() >= viewEnd.getTime()) return null;
+
+                      const dsStart = bTime.getTime() < viewStart.getTime() ? viewStart : bTime;
+                      const dsEnd = wTime.getTime() > viewEnd.getTime() ? viewEnd : wTime;
+
+                      if (dsStart.getTime() >= dsEnd.getTime()) return null;
+
+                      const left = ((dsStart.getTime() - viewStart.getTime()) / (24 * 60 * 60 * 1000)) * 100;
+                      const width = ((dsEnd.getTime() - dsStart.getTime()) / (24 * 60 * 60 * 1000)) * 100;
+
+                      return (
+                        <div 
+                          key={dailySleep.id}
+                          className="absolute top-0 bottom-0 pointer-events-none z-0 border-x border-indigo-500/20 overflow-hidden"
+                          style={{
+                            left: `${left}%`,
+                            width: `${width}%`,
+                            background: 'repeating-linear-gradient(-45deg, rgba(99,102,241,0.03), rgba(99,102,241,0.03) 10px, rgba(99,102,241,0.06) 10px, rgba(99,102,241,0.06) 20px)'
+                          }}
+                        >
+                          <div className="absolute top-4 left-4 flex items-center gap-1.5 opacity-50 bg-background/50 backdrop-blur-sm px-2 py-1 rounded-md border border-indigo-500/10">
+                            <Moon className="w-3 h-3 text-indigo-400" />
+                            <span className="text-[9px] font-black uppercase tracking-widest text-indigo-300">Sleep Phase</span>
+                          </div>
+                        </div>
+                      );
+                    })}
                     {/* Visual Grid - Elevated to be visible inside blocks */}
                     <div className="flex absolute inset-0 pointer-events-none z-40" style={{ height: '100%' }}>
                       {Array.from({ length: 24 }).map((_, hour) => (
@@ -1025,7 +1148,7 @@ export function TaskGanttTimeline({ tasks, goals, timeEntries = [], selectedDate
                               // Specific Scheduled Bar metrics
                               let scheduledLeft = left;
                               let scheduledWidth = width;
-                              let isCurrentlyScheduled = isTaskOverdueFromPast;
+                              let isCurrentlyScheduled = false;
 
                               if (task.scheduledStart) {
                                 const sStart = typeof task.scheduledStart === 'string' ? parseISO(task.scheduledStart) : task.scheduledStart;
@@ -1045,82 +1168,128 @@ export function TaskGanttTimeline({ tasks, goals, timeEntries = [], selectedDate
                                 }
                               }
 
+                              let interactiveLeftBase = isCurrentlyScheduled ? Math.min(left, scheduledLeft) : left;
+                              let interactiveRightBase = isCurrentlyScheduled ? Math.max(left + width, scheduledLeft + scheduledWidth) : left + width;
+
+                              if (showOverdueStripe) {
+                                interactiveLeftBase = Math.min(interactiveLeftBase, overdueStripeLeft);
+                                interactiveRightBase = Math.max(interactiveRightBase, overdueStripeLeft + overdueStripeWidth);
+                              }
+
+                              const interactiveLeft = interactiveLeftBase;
+                              const interactiveRight = interactiveRightBase;
+                              const interactiveWidth = interactiveRight - interactiveLeft;
 
                               return (
-                                <div key={task.id} className="absolute inset-x-0" style={{ top: `${taskTop}px`, height: '42px' }}>
-                                  {/* Overdue Background Track - Continuous from due until now */}
-                                  {showOverdueStripe && (
-                                    <div
-                                      className="absolute inset-y-1 overdue-striped rounded-xl opacity-30 z-0 pointer-events-none"
-                                      style={{
-                                        left: `${overdueStripeLeft}%`,
-                                        width: `${overdueStripeWidth}%`,
-                                      }}
-                                    />
-                                  )}
-
-                                  {/* Neural Window Indication - The broader context shadow */}
+                                <div 
+                                  key={task.id} 
+                                  className="absolute inset-x-0 group/bar" 
+                                  style={{ top: `${taskTop}px`, height: '42px' }}
+                                >
+                                  {/* Interactive Master Wrapper */}
                                   <div
-                                    className="absolute inset-y-0 rounded-xl border overflow-hidden transition-all duration-700 opacity-20 group-hover:opacity-40"
-                                    style={{
-                                      left: `${left}%`,
-                                      width: `${Math.max(width, 0.5)}%`,
-                                      backgroundColor: `color-mix(in srgb, ${group.goalColor}, transparent 96%)`,
-                                      borderColor: `color-mix(in srgb, ${group.goalColor}, transparent 70%)`,
-                                      backgroundImage: `repeating-linear-gradient(-45deg, color-mix(in srgb, ${group.goalColor}, transparent 75%) 0px, color-mix(in srgb, ${group.goalColor}, transparent 75%) 2px, transparent 2px, transparent 12px)`,
-                                      zIndex: 0,
+                                    className="absolute inset-y-0 cursor-pointer transition-all hover:z-50"
+                                    style={{ left: `${interactiveLeft}%`, width: `${Math.max(interactiveWidth, 0.5)}%` }}
+                                    onClick={() => {
+                                      const params = new URLSearchParams();
+                                      params.set('fromView', 'timeline');
+                                      if (isProjectView && task.projectId && task.projectId !== 'undefined') {
+                                        params.set('fromProject', task.projectId);
+                                      }
+                                      params.set('fromTab', 'timeline');
+                                      params.set('date', format(selectedDate, 'yyyy-MM-dd'));
+                                      router.push(`/tasks/${task.id}?${params.toString()}`);
                                     }}
-                                  />
+                                    onMouseEnter={() => {
+                                      const loggedMins = timeEntries.filter(e => e.taskId === task.id).reduce((sum, e) => sum + (e.duration || 0), 0);
+                                      const est = task.estimatedDuration || 60;
+                                      const util = Math.round((loggedMins / est) * 100);
+                                      setHoveredTask({ task, loggedMins, util, goal: goals.find(g => g.id === task.goalId) || null });
+                                    }}
+                                    onMouseLeave={() => setHoveredTask(null)}
+                                    onMouseMove={(e) => setMousePos({ x: e.clientX, y: e.clientY })}
+                                  >
+                                    {/* Overdue Background Track */}
+                                    {showOverdueStripe && (
+                                      <div
+                                        className="absolute inset-y-1 overdue-striped rounded-xl opacity-80 z-0 pointer-events-none"
+                                        style={{
+                                          left: `${((overdueStripeLeft - interactiveLeft) / interactiveWidth) * 100}%`,
+                                          width: `${(overdueStripeWidth / interactiveWidth) * 100}%`,
+                                        }}
+                                      />
+                                    )}
 
-                                  {/* Active Task Bar - The specifically scheduled window */}
-                                  {isCurrentlyScheduled && (
-                                    <motion.div
-                                      initial={{ opacity: 0, scaleX: 0 }}
-                                      animate={{ opacity: 1, scaleX: 1 }}
-                                      onClick={() => {
-                                        const params = new URLSearchParams();
-                                        params.set('fromView', 'timeline');
-                                        if (isProjectView && task.projectId && task.projectId !== 'undefined') {
-                                          params.set('fromProject', task.projectId);
-                                        }
-                                        params.set('fromTab', 'timeline');
-                                        params.set('date', format(selectedDate, 'yyyy-MM-dd'));
-                                        router.push(`/tasks/${task.id}?${params.toString()}`);
-                                      }}
+                                    {/* Neural Window Indication */}
+                                    {!isTaskOverdueFromPast && (
+                                      <div
                                       className={cn(
-                                        "absolute rounded-xl p-2.5 transition-all hover:z-50 cursor-pointer overflow-hidden backdrop-blur-md group/bar border-l-4",
-                                        task.status === 'done' ? "bg-emerald-500/10 border-emerald-500/30 shadow-[0_0_15px_rgba(16,185,129,0.1)]" :
-                                          task.status === 'in-progress' ? "bg-primary/10 border-primary/30 shadow-[0_0_15px_rgba(59,130,246,0.1)]" :
-                                            isOverdueNow ? "bg-red-500/10 border-red-500/30" : "bg-muted/10 border-muted-foreground/20"
+                                        "absolute inset-y-0 rounded-xl border overflow-hidden transition-all duration-700 pointer-events-none",
+                                        task.status === 'done' ? "opacity-30 group-hover/bar:opacity-50" : "opacity-40 group-hover/bar:opacity-70"
                                       )}
                                       style={{
-                                        left: `${scheduledLeft}%`,
-                                        width: `${Math.max(scheduledWidth, 0.5)}%`,
-                                        zIndex: 1,
+                                        left: `${((left - interactiveLeft) / interactiveWidth) * 100}%`,
+                                        width: `${(width / interactiveWidth) * 100}%`,
+                                        backgroundColor: task.status === 'done' 
+                                          ? `color-mix(in srgb, #10b981, transparent 85%)` 
+                                          : `color-mix(in srgb, ${group.goalColor}, transparent 85%)`,
+                                        borderColor: task.status === 'done'
+                                          ? `color-mix(in srgb, #10b981, transparent 50%)`
+                                          : `color-mix(in srgb, ${group.goalColor}, transparent 50%)`,
+                                        backgroundImage: task.status === 'done' 
+                                          ? 'none' 
+                                          : `repeating-linear-gradient(-45deg, color-mix(in srgb, ${group.goalColor}, transparent 60%) 0px, color-mix(in srgb, ${group.goalColor}, transparent 60%) 2px, transparent 2px, transparent 12px)`,
+                                        zIndex: 0,
+                                      }}
+                                    />
+                                    )}
+
+                                    {/* Active Scheduled Bar */}
+                                    {isCurrentlyScheduled && (
+                                      <motion.div
+                                        initial={{ opacity: 0, scaleX: 0 }}
+                                        animate={{ opacity: 1, scaleX: 1 }}
+                                        className={cn(
+                                          "absolute inset-y-0 rounded-xl overflow-hidden backdrop-blur-md border-l-4 pointer-events-none",
+                                          task.status === 'done' ? "bg-emerald-500/10 border-emerald-500/30 shadow-[0_0_15px_rgba(16,185,129,0.1)]" :
+                                            task.status === 'in-progress' ? "bg-primary/10 border-primary/30 shadow-[0_0_15px_rgba(59,130,246,0.1)]" :
+                                              isOverdueNow ? "bg-red-500/10 border-red-500/30" : "bg-muted/10 border-muted-foreground/20"
+                                        )}
+                                        style={{
+                                          left: `${((scheduledLeft - interactiveLeft) / interactiveWidth) * 100}%`,
+                                          width: `${(scheduledWidth / interactiveWidth) * 100}%`,
+                                          zIndex: 1,
+                                        }}
+                                      />
+                                    )}
+
+                                    {/* Floating Text Label */}
+                                    <div 
+                                      className="absolute inset-y-0 flex items-center px-2.5 z-10 pointer-events-none"
+                                      style={{
+                                        left: `${(((isCurrentlyScheduled ? scheduledLeft : left) - interactiveLeft) / interactiveWidth) * 100}%`,
+                                        width: `${((isCurrentlyScheduled ? scheduledWidth : width) / interactiveWidth) * 100}%`,
                                       }}
                                     >
-                                      <div className="flex items-center justify-between h-full">
-                                        <div className="flex flex-col min-w-0">
-                                          <span className={cn(
-                                            "text-[10px] font-black truncate tracking-tight uppercase group-hover/bar:text-primary transition-colors",
-                                            task.status === 'done' && "line-through opacity-40"
-                                          )}>
-                                            {task.title}
-                                          </span>
-                                          {zoomLevel >= 2 && task.scheduledStart && (
-                                            <div className="flex items-center gap-1.5 opacity-40">
-                                              <span className="text-[7px] font-black">
-                                                {format(typeof task.scheduledStart === 'string' ? parseISO(task.scheduledStart) : task.scheduledStart, 'HH:mm')}
-                                                {task.scheduledEnd && ` - ${format(typeof task.scheduledEnd === 'string' ? parseISO(task.scheduledEnd) : task.scheduledEnd, 'HH:mm')}`}
-                                              </span>
-                                              {task.priority === 'high' && <Zap className="h-2 w-2 text-rose-500 fill-current" />}
-                                            </div>
-                                          )}
-                                        </div>
+                                      <div className="flex flex-col min-w-0">
+                                        <span className={cn(
+                                          "text-[10px] font-black truncate tracking-tight uppercase group-hover/bar:text-primary transition-colors",
+                                          task.status === 'done' ? "line-through opacity-40" : "text-foreground/90"
+                                        )}>
+                                          {task.title}
+                                        </span>
+                                        {zoomLevel >= 2 && task.scheduledStart && isCurrentlyScheduled && (
+                                          <div className="flex items-center gap-1.5 opacity-40">
+                                            <span className="text-[7px] font-black">
+                                              {format(typeof task.scheduledStart === 'string' ? parseISO(task.scheduledStart) : task.scheduledStart, 'HH:mm')}
+                                              {task.scheduledEnd && ` - ${format(typeof task.scheduledEnd === 'string' ? parseISO(task.scheduledEnd) : task.scheduledEnd, 'HH:mm')}`}
+                                            </span>
+                                            {task.priority === 'high' && <Zap className="h-2 w-2 text-rose-500 fill-current" />}
+                                          </div>
+                                        )}
                                       </div>
-                                    </motion.div>
-                                  )}
-
+                                    </div>
+                                  </div>
                                   {/* Tracked & Manual Logs (Actual Execution Pulse) */}
                                   {timeEntries.filter(e => e.taskId === task.id).map((entry) => {
                                     const start = new Date(entry.startTime);
@@ -1193,6 +1362,150 @@ export function TaskGanttTimeline({ tasks, goals, timeEntries = [], selectedDate
           </div>
         </CardContent>
       </Card>
+
+      {/* ── Cursor-following task hover card (portal) ──────────────── */}
+      {mounted && hoveredTask && createPortal(
+        (() => {
+          const { task, loggedMins, util, goal } = hoveredTask;
+          const CARD_W = 320;
+          const CARD_H = 340;
+          const GAP = 18;
+          const vpW = window.innerWidth;
+          const vpH = window.innerHeight;
+          const left = mousePos.x + CARD_W + GAP > vpW ? mousePos.x - CARD_W - GAP : mousePos.x + GAP;
+          const top = mousePos.y + CARD_H + GAP > vpH ? mousePos.y - CARD_H - GAP : mousePos.y + GAP;
+          
+          // Use scheduled start if available, otherwise createdAt
+          const displayStart = task.scheduledStart 
+            ? new Date(typeof task.scheduledStart === 'string' ? parseISO(task.scheduledStart) : task.scheduledStart)
+            : new Date(task.createdAt);
+
+          return (
+            <div
+              className="fixed z-[9999] pointer-events-none"
+              style={{ left, top, width: CARD_W }}
+            >
+              <div className="bg-background/98 backdrop-blur-2xl border border-primary/20 shadow-[0_32px_64px_-12px_rgba(0,0,0,0.7)] rounded-[2rem] overflow-hidden text-foreground">
+                {/* status gradient strip */}
+                <div className={cn('h-1.5 w-full bg-gradient-to-r', statusGradient(task.status))} />
+                <div className="p-5 space-y-4">
+                  {/* Header */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-black uppercase tracking-[0.2em] text-primary/60">
+                        {goal?.title || 'Standalone Task'}
+                      </span>
+                      <Badge variant="outline" className={cn('text-[8px] font-black uppercase py-0 px-2 h-4 border-none bg-primary/10', task.status === 'done' ? 'text-emerald-400' : 'text-primary')}>
+                        {task.status.replace('-', ' ')}
+                      </Badge>
+                    </div>
+                    <h4 className="text-sm font-black tracking-tight leading-snug text-foreground">{task.title}</h4>
+                  </div>
+
+                  {/* Details Grid */}
+                  <div className="grid grid-cols-2 gap-4 pt-1">
+                    <div className="space-y-3">
+                      {/* Created */}
+                      <div className="flex items-start gap-2.5">
+                        <div className="mt-0.5 p-1 rounded-md bg-muted/40 border border-primary/5">
+                          <Plus className="h-3 w-3 text-violet-400/70" />
+                        </div>
+                        <div>
+                          <p className="text-[8px] font-black uppercase tracking-widest text-muted-foreground/50 mb-1">Created</p>
+                          <p className="text-[10px] font-black text-foreground/90">{format(new Date(task.createdAt), 'MMM d, HH:mm')}</p>
+                        </div>
+                      </div>
+                      {/* Scheduled Start */}
+                      <div className="flex items-start gap-2.5">
+                        <div className="mt-0.5 p-1 rounded-md bg-muted/40 border border-primary/5">
+                          <CalendarIcon className="h-3 w-3 text-primary/70" />
+                        </div>
+                        <div>
+                          <p className="text-[8px] font-black uppercase tracking-widest text-muted-foreground/50 mb-1">Schedule</p>
+                          <p className="text-[10px] font-black text-foreground/90">{format(displayStart, 'MMM d, HH:mm')}</p>
+                        </div>
+                      </div>
+                      {/* Closed date (only if done) */}
+                      {task.status === 'done' && (
+                        <div className="flex items-start gap-2.5">
+                          <div className="mt-0.5 p-1 rounded-md bg-emerald-500/10 border border-emerald-500/10">
+                            <CheckCircle2 className="h-3 w-3 text-emerald-400/80" />
+                          </div>
+                          <div>
+                            <p className="text-[8px] font-black uppercase tracking-widest text-muted-foreground/50 mb-1">Closed</p>
+                            <p className="text-[10px] font-black text-emerald-400">
+                              {format(new Date(task.updatedAt), 'MMM d, HH:mm')}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="space-y-3">
+                      {/* Deadline */}
+                      <div className="flex items-start gap-2.5">
+                        <div className="mt-0.5 p-1 rounded-md bg-muted/40 border border-primary/5">
+                          <Target className="h-3 w-3 text-amber-500/70" />
+                        </div>
+                        <div>
+                          <p className="text-[8px] font-black uppercase tracking-widest text-muted-foreground/50 mb-1">Deadline</p>
+                          <p className="text-[10px] font-black text-foreground/90">{task.deadline ? format(new Date(task.deadline), 'MMM d, HH:mm') : 'None Set'}</p>
+                        </div>
+                      </div>
+                      {/* Estimated */}
+                      <div className="flex items-start gap-2.5">
+                        <div className="mt-0.5 p-1 rounded-md bg-muted/40 border border-primary/5">
+                          <Clock className="h-3 w-3 text-blue-400/70" />
+                        </div>
+                        <div>
+                          <p className="text-[8px] font-black uppercase tracking-widest text-muted-foreground/50 mb-1">Estimated</p>
+                          <p className="text-[10px] font-black text-foreground/90">{formatMin(task.estimatedDuration || 0)}</p>
+                        </div>
+                      </div>
+                      {/* Logged */}
+                      <div className="flex items-start gap-2.5">
+                        <div className="mt-0.5 p-1 rounded-md bg-muted/40 border border-primary/5">
+                          <History className="h-3 w-3 text-emerald-400/70" />
+                        </div>
+                        <div>
+                          <p className="text-[8px] font-black uppercase tracking-widest text-muted-foreground/50 mb-1">Logged</p>
+                          <p className="text-[10px] font-black text-foreground/90">{formatMin(loggedMins)}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Efficiency progress */}
+                  <div className="pt-2 border-t border-primary/5">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[9px] font-black uppercase tracking-[0.2em] text-muted-foreground/60 flex items-center gap-1.5">
+                        <TrendingUp className="h-3 w-3 text-primary/40" />
+                        Efficiency Load
+                      </span>
+                      <span className={cn('text-[10px] font-bold tabular-nums', util > 100 ? 'text-red-400' : 'text-foreground')}>
+                        {util}%
+                      </span>
+                    </div>
+                    <div className="h-2 w-full rounded-full bg-muted/40 border border-primary/5 overflow-hidden p-0.5">
+                      <div
+                        className={cn('h-full rounded-full transition-all', util > 100 ? 'bg-red-500' : 'bg-gradient-to-r from-primary/50 to-primary')}
+                        style={{ width: `${Math.min(100, util)}%` }}
+                      />
+                    </div>
+                    {util > 100 && (
+                      <p className="text-[8px] font-black text-red-400/80 uppercase tracking-widest mt-2 flex items-center gap-1">
+                        <AlertCircle className="h-2.5 w-2.5" />
+                        Capacity Overrun Detected
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })(),
+        document.body
+      )}
     </div>
   );
 }

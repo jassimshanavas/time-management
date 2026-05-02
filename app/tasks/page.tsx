@@ -42,7 +42,7 @@ import { Grid2X2 } from 'lucide-react';
 function TasksPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { tasks, addTask, updateTask, deleteTask, userId: currentUserId, goals, projects, selectedProjectId, timeEntries } = useStore();
+  const { tasks, addTask, updateTask, deleteTask, userId: currentUserId, goals, projects, selectedProjectId, timeEntries, sleepEntries } = useStore();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
 
@@ -737,27 +737,7 @@ function TasksPageContent() {
               // For now keeping it since the user focused on list/kanban
               <div className="space-y-4">
                 {/* Date selector */}
-                <div className="flex items-center gap-4">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-8 rounded-lg"
-                    onClick={() => setSelectedDate(new Date(selectedDate.getTime() - 86400000))}
-                  >
-                    Prev
-                  </Button>
-                  <div className="flex-1 text-center font-black text-xs uppercase tracking-widest">
-                    {format(selectedDate, 'MMMM d, yyyy')}
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-8 rounded-lg"
-                    onClick={() => setSelectedDate(new Date(selectedDate.getTime() + 86400000))}
-                  >
-                    Next
-                  </Button>
-                </div>
+
                 <TaskGanttTimeline
                   tasks={filterTasksByStatus()}
                   goals={(() => {
@@ -784,6 +764,7 @@ function TasksPageContent() {
                   })}
                   selectedDate={selectedDate}
                   onDateChange={setSelectedDate}
+                  sleepEntries={sleepEntries}
                 />
               </div>
             ) : viewMode === 'list' ? (
