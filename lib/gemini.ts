@@ -9,7 +9,7 @@ import { ASTRA_TOOL_DEFINITIONS, executeAstraTool, type ToolAction, type AstraCo
 
 const GROQ_API_KEY = process.env.NEXT_PUBLIC_GROQ_API_KEY || '';
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const MODEL = 'llama-3.3-70b-versatile';
+const MODEL = 'llama-3.1-8b-instant'; // Switched to 8B model: 30,000 TPM free tier (vs 12,000 for 70B)
 
 // ─── System Prompt ─────────────────────────────────────────────────────────────
 
