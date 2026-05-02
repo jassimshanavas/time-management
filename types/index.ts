@@ -14,6 +14,9 @@ export interface TaskSubtask {
   id: string;
   title: string;
   done: boolean;
+  productivityScore?: number; // 1-5
+  outcome?: string;
+  completedAt?: Date;
 }
 
 export interface TaskJournalEntry {
@@ -144,6 +147,7 @@ export interface TimeEntry {
   duration?: number; // in minutes
   isRunning: boolean;
   notes?: string;
+  productivityScore?: number; // 1-5
 }
 
 export interface SleepEntry {

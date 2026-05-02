@@ -72,13 +72,15 @@ import {
   Users,
   Share2,
   Settings,
-  Layout
+  Layout,
+  Star
 } from 'lucide-react';
 import * as htmlToImage from 'html-to-image';
 import { toast } from 'sonner';
 import { format, formatDistanceToNow, addDays, subDays } from 'date-fns';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import type { Task, TaskComment, TaskSubtask, TaskJournalEntry, TimeEntry } from '@/types';
 import { ProtectedRoute } from '@/components/protected-route';
 import { DataLoader } from '@/components/data-loader';
@@ -129,6 +131,11 @@ function TaskDetailPageContent() {
   const [isDependencyModalOpen, setIsDependencyModalOpen] = useState(false);
   const [sessionSummary, setSessionSummary] = useState('');
   const [sessionCategory, setSessionCategory] = useState('');
+  const [sessionScore, setSessionScore] = useState<number>(0);
+  const [activeRatingPhaseId, setActiveRatingPhaseId] = useState<string | null>(null);
+  const [phaseRatingScore, setPhaseRatingScore] = useState<number>(0);
+  const [phaseRatingNotes, setPhaseRatingNotes] = useState<string>('');
+  const activeRatingPhaseTimeout = useRef<NodeJS.Timeout | null>(null);
   const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
   const [pendingManualEntry, setPendingManualEntry] = useState<Omit<TimeEntry, 'id'> | null>(null);
   const [timerForm, setTimerForm] = useState({ category: '', description: '' });
@@ -296,7 +303,8 @@ function TaskDetailPageContent() {
     if (editingEntryId) {
       await updateTimeEntry(editingEntryId, {
         notes: sessionSummary,
-        category: sessionCategory
+        category: sessionCategory,
+        productivityScore: sessionScore || undefined
       });
       setEditingEntryId(null);
     } else if (pendingManualEntry) {
@@ -304,6 +312,7 @@ function TaskDetailPageContent() {
         ...pendingManualEntry,
         notes: sessionSummary,
         category: sessionCategory || pendingManualEntry.category,
+        productivityScore: sessionScore || undefined
       });
       setPendingManualEntry(null);
       setManualEntry((prev) => ({
@@ -313,11 +322,12 @@ function TaskDetailPageContent() {
         minutes: '30',
       }));
     } else if (taskRunningEntry) {
-      await stopTimeEntry(taskRunningEntry.id, sessionSummary);
+      await stopTimeEntry(taskRunningEntry.id, sessionSummary, sessionScore || undefined);
     }
     toast.success(editingEntryId ? 'Entry updated' : 'Operation recorded');
     setSessionSummary('');
     setSessionCategory('');
+    setSessionScore(0);
     setIsSummaryDialogOpen(false);
   };
 
@@ -325,6 +335,7 @@ function TaskDetailPageContent() {
     setEditingEntryId(entry.id);
     setSessionSummary(entry.notes || '');
     setSessionCategory(entry.category || task?.title || '');
+    setSessionScore(entry.productivityScore || 0);
     setIsSummaryDialogOpen(true);
   };
 
@@ -350,6 +361,7 @@ function TaskDetailPageContent() {
     });
     setSessionSummary('');
     setSessionCategory(template.category);
+    setSessionScore(0);
     setIsSummaryDialogOpen(true);
   };
 
@@ -397,6 +409,7 @@ function TaskDetailPageContent() {
     });
     setSessionSummary(manualEntry.description.trim() || '');
     setSessionCategory(manualEntry.category.trim() || task.title);
+    setSessionScore(0);
     setIsSummaryDialogOpen(true);
   };
 
@@ -516,10 +529,57 @@ function TaskDetailPageContent() {
   const handleToggleSubtask = async (subtaskId: string) => {
     if (!task || !task.subtasks) return;
 
-    const updatedSubtasks = task.subtasks.map((subtask) =>
-      subtask.id === subtaskId ? { ...subtask, done: !subtask.done } : subtask
+    const subtask = task.subtasks.find(s => s.id === subtaskId);
+    if (!subtask) return;
+
+    const willBeDone = !subtask.done;
+    
+    const updatedSubtasks = task.subtasks.map((s) => {
+      if (s.id === subtaskId) {
+        return {
+          ...s,
+          done: willBeDone,
+          completedAt: willBeDone ? new Date() : undefined,
+          // If un-checking, we might want to clear the rating, but let's just leave it or clear it.
+          // For now, keep the rating if they uncheck and re-check, or clear it. Let's keep it.
+        };
+      }
+      return s;
+    });
+
+    await updateTask(task.id, { subtasks: updatedSubtasks });
+
+    if (willBeDone) {
+      setActiveRatingPhaseId(subtaskId);
+      setPhaseRatingScore(subtask.productivityScore || 0);
+      setPhaseRatingNotes(subtask.outcome || '');
+      
+      if (activeRatingPhaseTimeout.current) {
+        clearTimeout(activeRatingPhaseTimeout.current);
+      }
+      activeRatingPhaseTimeout.current = setTimeout(() => {
+        setActiveRatingPhaseId(null);
+      }, 8000);
+    } else {
+      if (activeRatingPhaseId === subtaskId) {
+        setActiveRatingPhaseId(null);
+      }
+    }
+  };
+
+  const handleSavePhaseRating = async (subtaskId: string) => {
+    if (!task || !task.subtasks) return;
+    const updatedSubtasks = task.subtasks.map(s => 
+      s.id === subtaskId 
+        ? { ...s, productivityScore: phaseRatingScore || undefined, outcome: phaseRatingNotes.trim() || undefined }
+        : s
     );
     await updateTask(task.id, { subtasks: updatedSubtasks });
+    setActiveRatingPhaseId(null);
+    if (activeRatingPhaseTimeout.current) {
+      clearTimeout(activeRatingPhaseTimeout.current);
+    }
+    toast.success('Phase rating saved');
   };
 
   const handleDeleteSubtask = async (subtaskId: string) => {
@@ -608,6 +668,21 @@ function TaskDetailPageContent() {
     ? Math.round((flowMinutes / totalTrackedMinutes) * 100)
     : 0;
 
+  const averageSessionRating = useMemo(() => {
+    const ratedEntries = taskEntries.filter(e => e.productivityScore !== undefined);
+    if (ratedEntries.length === 0) return 0;
+    const totalScore = ratedEntries.reduce((acc, e) => acc + e.productivityScore!, 0);
+    return (totalScore / ratedEntries.length).toFixed(1);
+  }, [taskEntries]);
+
+  const averagePhaseRating = useMemo(() => {
+    if (!task?.subtasks) return 0;
+    const ratedPhases = task.subtasks.filter(s => s.productivityScore !== undefined);
+    if (ratedPhases.length === 0) return 0;
+    const totalScore = ratedPhases.reduce((acc, s) => acc + s.productivityScore!, 0);
+    return (totalScore / ratedPhases.length).toFixed(1);
+  }, [task?.subtasks]);
+
   const sevenDayAverage = useMemo(() => {
     const sevenDaysAgo = subDays(new Date(), 7);
     sevenDaysAgo.setHours(0, 0, 0, 0);
@@ -668,6 +743,17 @@ function TaskDetailPageContent() {
         ),
     [taskEntries, toDate]
   );
+
+  const peakHours = useMemo(() => {
+    const hours = Array(24).fill(0);
+    taskEntries.forEach(entry => {
+      const start = toDate(entry.startTime);
+      if (start) {
+        hours[start.getHours()] += getEntryDuration(entry);
+      }
+    });
+    return hours;
+  }, [taskEntries, toDate]);
 
   if (!task) {
     return (
@@ -801,43 +887,32 @@ function TaskDetailPageContent() {
                         <div className="absolute inset-0 animate-pulse bg-white/20" />
                       )}
                     </div>
-                    <div className="flex flex-wrap items-center gap-2.5 mt-6">
-                      <Badge variant="outline" className="font-bold border-primary/10 bg-muted/30 text-muted-foreground py-1 px-3">
-                        Created {format(toDate(task.createdAt)!, 'MMM d, yyyy')}
-                      </Badge>
-
-                      {linkedProject && (
-                        <Badge
-                          variant="secondary"
-                          className="font-black text-[10px] uppercase tracking-widest px-3 py-1 border transition-all"
-                          style={{
-                            backgroundColor: `${linkedProject.color}15`,
-                            color: linkedProject.color,
-                            borderColor: `${linkedProject.color}30`
-                          }}
-                        >
-                          <Zap className="h-3 w-3 mr-1.5 opacity-70" />
-                          {linkedProject.name} Project
-                        </Badge>
-                      )}
-
-                      {linkedGoal && (
-                        <Badge
-                          variant="secondary"
-                          className="bg-amber-500/10 text-amber-500 border-amber-500/20 font-black text-[10px] uppercase tracking-widest px-3 py-1"
-                        >
-                          <Target className="h-3 w-3 mr-1.5 opacity-70" />
-                          Goal: {linkedGoal.title}
-                        </Badge>
-                      )}
-
-                      <div className={`flex items-center gap-1.5 ml-2 ${momentumConfig.text} font-black text-[10px] tracking-[0.2em] animate-in fade-in slide-in-from-left-2 duration-500`}>
-                        <momentumConfig.icon className="h-3 w-3" />
-                        {momentumConfig.label}
-                      </div>
-                    </div>
                   </div>
                 </div>
+
+                {/* Mini-Gantt Task Lifetime Bar */}
+                {(() => {
+                  const cDate = toDate(task.createdAt);
+                  const dDate = task.deadline ? toDate(task.deadline) : null;
+                  if (!cDate || !dDate) return null;
+                  const totalMs = Math.max(1, dDate.getTime() - cDate.getTime());
+                  const elapsedMs = Math.max(0, Date.now() - cDate.getTime());
+                  const progressPct = Math.min(100, (elapsedMs / totalMs) * 100);
+                  const isOverdue = Date.now() > dDate.getTime();
+                  return (
+                    <div className="mt-6 mb-2 space-y-1.5 w-full max-w-lg ml-12">
+                      <div className="flex justify-between items-center text-[9px] font-black uppercase tracking-widest text-muted-foreground/60">
+                        <span>{format(cDate, 'MMM d, yyyy')}</span>
+                        <span className={isOverdue ? 'text-destructive' : ''}>{format(dDate, 'MMM d, yyyy')}</span>
+                      </div>
+                      <div className="relative h-2 w-full bg-muted/40 rounded-full overflow-hidden border border-primary/5">
+                        <div className={`absolute top-0 left-0 h-full transition-all duration-1000 ${isOverdue ? 'bg-destructive/30' : 'bg-primary/30'}`} style={{ width: `${progressPct}%` }} />
+                        <div className={`absolute top-0 h-full w-2 rounded-full transition-all duration-1000 ${isOverdue ? 'bg-destructive shadow-[0_0_8px_rgba(239,68,68,0.8)]' : 'bg-primary shadow-sm shadow-primary/50 animate-pulse'}`} style={{ left: `calc(${progressPct}% - 4px)` }} />
+                      </div>
+                    </div>
+                  );
+                })()}
+
               </div>
 
               <div className="flex items-center gap-3">
@@ -861,10 +936,23 @@ function TaskDetailPageContent() {
             </div>
 
             {/* Dashboard Grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+              {/* Left Column: Tabs Interface */}
+              <div className="lg:col-span-8">
+                <Tabs defaultValue="execution" className="w-full">
+                  <TabsList className="w-full bg-muted/20 p-1 h-14 rounded-2xl border border-primary/5 mb-8">
+                    <TabsTrigger value="execution" className="flex-1 rounded-xl font-black uppercase tracking-widest text-[10px] data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                      <ListTodo className="h-3.5 w-3.5 mr-2" /> Execution
+                    </TabsTrigger>
+                    <TabsTrigger value="analytics" className="flex-1 rounded-xl font-black uppercase tracking-widest text-[10px] data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                      <TrendingUp className="h-3.5 w-3.5 mr-2" /> Analytics & Logs
+                    </TabsTrigger>
+                    <TabsTrigger value="comms" className="flex-1 rounded-xl font-black uppercase tracking-widest text-[10px] data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                      <MessageSquare className="h-3.5 w-3.5 mr-2" /> Comms & Journal
+                    </TabsTrigger>
+                  </TabsList>
 
-              {/* Left Column: Execution & Details */}
-              <div className="lg:col-span-8 space-y-8">
+                  <TabsContent value="execution" className="space-y-8 mt-0 focus-visible:outline-none">
 
                 {/* Cover & Description */}
                 {(task.coverImage || task.description) && (
@@ -897,7 +985,17 @@ function TaskDetailPageContent() {
                         <div className="p-2 rounded-lg bg-primary/10 text-primary">
                           <ListTodo className="h-4 w-4" />
                         </div>
-                        <CardTitle className="text-lg font-black italic">Execution Checklist</CardTitle>
+                        <div className="space-y-1">
+                          <CardTitle className="text-lg font-black italic">Execution Checklist</CardTitle>
+                          {totalSubtasks > 0 && (
+                            <div className="flex items-center gap-2">
+                              <div className="w-24 h-1.5 bg-muted rounded-full overflow-hidden">
+                                <div className="h-full bg-primary transition-all duration-500" style={{ width: `${Math.round((completedSubtasks / totalSubtasks) * 100)}%` }} />
+                              </div>
+                              <span className="text-[9px] font-black tracking-widest text-muted-foreground">{Math.round((completedSubtasks / totalSubtasks) * 100)}%</span>
+                            </div>
+                          )}
+                        </div>
                       </div>
                       {!isAddingSubtask && (
                         <Button
@@ -929,21 +1027,82 @@ function TaskDetailPageContent() {
 
                     <div className="space-y-3">
                       {task.subtasks && task.subtasks.length > 0 ? (
-                        task.subtasks.map((subtask) => (
-                          <div key={subtask.id} className="group flex items-center justify-between gap-4 p-4 rounded-xl border border-primary/5 bg-background hover:border-primary/20 transition-all shadow-sm hover:shadow-md">
-                            <div className="flex items-center gap-4">
-                              <Checkbox
-                                checked={subtask.done}
-                                onCheckedChange={() => handleToggleSubtask(subtask.id)}
-                                className="h-5 w-5 rounded-md border-primary/20 data-[state=checked]:bg-primary"
-                              />
-                              <span className={`font-bold transition-all ${subtask.done ? 'line-through opacity-40' : 'text-foreground'}`}>
-                                {subtask.title}
-                              </span>
+                        [...task.subtasks].sort((a, b) => (a.done === b.done ? 0 : a.done ? 1 : -1)).map((subtask) => (
+                          <div key={subtask.id} className="space-y-2">
+                            <div className={`group flex items-center justify-between gap-4 p-4 rounded-xl border transition-all shadow-sm ${subtask.done ? 'border-transparent bg-muted/10 opacity-60' : 'border-primary/5 bg-background hover:border-primary/20 hover:shadow-md'}`}>
+                              <div className="flex flex-col gap-2 min-w-0">
+                                <div className="flex items-center gap-4">
+                                  <Checkbox
+                                    checked={subtask.done}
+                                    onCheckedChange={() => handleToggleSubtask(subtask.id)}
+                                    className="h-5 w-5 rounded-md border-primary/20 data-[state=checked]:bg-primary shrink-0"
+                                  />
+                                  <span className={`font-bold transition-all truncate ${subtask.done ? 'line-through opacity-40' : 'text-foreground'}`}>
+                                    {subtask.title}
+                                  </span>
+                                </div>
+                                {subtask.done && (subtask.productivityScore || subtask.outcome) && (
+                                  <div className="flex items-center gap-3 pl-9">
+                                    {subtask.productivityScore ? (
+                                      <div className="flex items-center gap-0.5" title={`Productivity Rating: ${subtask.productivityScore}/5`}>
+                                        {Array.from({ length: 5 }).map((_, i) => (
+                                          <Star key={i} className={`h-2.5 w-2.5 ${i < subtask.productivityScore! ? 'fill-amber-500 text-amber-500' : 'fill-muted-foreground/20 text-muted-foreground/20'}`} />
+                                        ))}
+                                      </div>
+                                    ) : null}
+                                    {subtask.outcome && (
+                                      <p className="text-[10px] italic text-muted-foreground truncate">{subtask.outcome}</p>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                              <Button size="icon" variant="ghost" onClick={() => handleDeleteSubtask(subtask.id)} className="opacity-0 group-hover:opacity-100 h-8 w-8 text-destructive hover:bg-destructive/5 transition-opacity shrink-0">
+                                <X className="h-4 w-4" />
+                              </Button>
                             </div>
-                            <Button size="icon" variant="ghost" onClick={() => handleDeleteSubtask(subtask.id)} className="opacity-0 group-hover:opacity-100 h-8 w-8 text-destructive hover:bg-destructive/5 transition-opacity">
-                              <X className="h-4 w-4" />
-                            </Button>
+
+                            {/* Inline Rating Panel */}
+                            {activeRatingPhaseId === subtask.id && (
+                              <div className="pl-9 pr-4 py-3 bg-muted/20 border border-primary/10 rounded-xl animate-in slide-in-from-top-2 fade-in duration-300">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-primary/60 mb-2">How did this phase go?</p>
+                                <div className="space-y-3">
+                                  <div className="flex gap-1">
+                                    {[
+                                      { score: 1, label: 'Distracted' },
+                                      { score: 2, label: 'Slow' },
+                                      { score: 3, label: 'Steady' },
+                                      { score: 4, label: 'Sharp' },
+                                      { score: 5, label: 'Flow' }
+                                    ].map(rating => (
+                                      <Button
+                                        key={rating.score}
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => setPhaseRatingScore(phaseRatingScore === rating.score ? 0 : rating.score)}
+                                        className={`flex-1 h-9 rounded-lg transition-all ${phaseRatingScore === rating.score ? 'bg-amber-500/10 border-amber-500 text-amber-500' : 'border-primary/10 hover:border-amber-500/30'}`}
+                                      >
+                                        <div className="flex items-center gap-1">
+                                          <Star className={`h-3 w-3 ${phaseRatingScore === rating.score ? 'fill-amber-500' : ''}`} />
+                                          <span className="text-[9px] font-black uppercase hidden sm:inline-block">{rating.label}</span>
+                                        </div>
+                                      </Button>
+                                    ))}
+                                  </div>
+                                  <div className="flex gap-2">
+                                    <Input 
+                                      placeholder="Outcome notes (optional)" 
+                                      value={phaseRatingNotes}
+                                      onChange={(e) => setPhaseRatingNotes(e.target.value)}
+                                      className="h-8 text-xs bg-background"
+                                    />
+                                    <Button size="sm" onClick={() => handleSavePhaseRating(subtask.id)} className="h-8 text-[10px] uppercase font-black tracking-widest shrink-0">
+                                      Save
+                                    </Button>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         ))
                       ) : !isAddingSubtask && (
@@ -952,6 +1111,9 @@ function TaskDetailPageContent() {
                     </div>
                   </CardContent>
                 </Card>
+              </TabsContent>
+
+              <TabsContent value="analytics" className="space-y-8 mt-0 focus-visible:outline-none">
 
                 {/* Time Tracking Section - Prominent in main column */}
                 <Card className="overflow-hidden border-primary/10 shadow-lg bg-gradient-to-br from-background to-muted/20">
@@ -967,186 +1129,100 @@ function TaskDetailPageContent() {
                     </div>
                   </CardHeader>
                   <CardContent className="p-8 space-y-10">
-                    <div className="grid grid-cols-2 lg:grid-cols-6 gap-8">
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-8 lg:gap-12">
                       {[
-                        { label: 'Total Invested', value: formatDuration(totalTrackedMinutes) },
-                        { label: 'Today', value: formatDuration(todayTrackedMinutes) },
-                        { label: 'Avg Session', value: formatDuration(averageSessionMinutes) },
-                        { label: 'Efficiency', value: progressToEstimate !== null ? `${progressToEstimate}%` : 'N/A' },
-                        { label: 'Flow Score', value: `${flowScore}%` },
+                        { label: 'Total Invested', value: formatDuration(totalTrackedMinutes), desc: 'Total time logged on this task across all sessions.' },
+                        { label: 'Today', value: formatDuration(todayTrackedMinutes), desc: 'Time logged on this task since midnight today.' },
+                        { label: 'Avg Session', value: formatDuration(averageSessionMinutes), desc: 'Average duration of a single logged session for this task.' },
+                        { label: 'Avg Rating', value: Number(averageSessionRating) > 0 ? <span className="flex items-center gap-1.5"><Star className="h-6 w-6 fill-amber-500 text-amber-500 pb-1" /> {averageSessionRating}</span> : 'N/A', desc: 'Average star rating across all logged sessions for this task.' },
+                        { label: 'Phase Rating', value: Number(averagePhaseRating) > 0 ? <span className="flex items-center gap-1.5"><Star className="h-6 w-6 fill-amber-500 text-amber-500 pb-1" /> {averagePhaseRating}</span> : 'N/A', desc: 'Average star rating across all completed phases for this task.' },
+                        { label: 'Efficiency', value: progressToEstimate !== null ? `${progressToEstimate}%` : 'N/A', desc: 'Total time spent compared to the estimated duration. >100% means it took longer than estimated.' },
+                        { label: 'Flow Score', value: `${flowScore}%`, desc: 'Percentage of total time spent in uninterrupted deep work sessions lasting 90 minutes or longer.' },
                       ].map((stat, i) => (
-                        <div key={i} className="space-y-1">
-                          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/50">{stat.label}</p>
-                          <p className="text-3xl font-black tabular-nums tracking-tighter">{stat.value}</p>
-                        </div>
+                        <TooltipProvider key={i}>
+                          <Tooltip delayDuration={300}>
+                            <TooltipTrigger asChild>
+                              <div className="space-y-1">
+                                <div><p className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/50 border-b border-dashed border-muted-foreground/30 inline-block pb-0.5 mb-1">{stat.label}</p></div>
+                                <p className="text-3xl font-black tabular-nums tracking-tighter">{stat.value}</p>
+                              </div>
+                            </TooltipTrigger>
+                            <TooltipContent side="top" sideOffset={5} className="max-w-[200px] text-xs">
+                              <p>{stat.desc}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
                       ))}
 
                       {/* Momentum Gauge */}
-                      <div className="space-y-2">
-                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/50">Momentum</p>
-                        <div className="flex items-end gap-2">
-                          <p className={`text-3xl font-black tabular-nums tracking-tighter ${momentumConfig.text}`}>
-                            {Math.round(momentumRatio * 100)}%
-                          </p>
-                          <momentumConfig.icon className={`h-5 w-5 mb-1 ${momentumConfig.text} ${momentumRatio >= 1.2 ? 'animate-bounce' : ''}`} />
-                        </div>
-                        <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
-                          <div
-                            className={`h-full ${momentumConfig.color} transition-all duration-1000`}
-                            style={{ width: `${Math.min(100, momentumRatio * 50)}%` }}
-                          />
-                        </div>
-                      </div>
-                    </div>
+                      <TooltipProvider>
+                        <Tooltip delayDuration={300}>
+                          <TooltipTrigger asChild>
+                            <div className="space-y-1">
+                              <div><p className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/50 border-b border-dashed border-muted-foreground/30 inline-block pb-0.5 mb-1">Momentum Gauge</p></div>
+                              <div className="relative flex flex-col items-center pt-1 w-[140px]">
+                          <svg width="140" height="80" viewBox="0 0 140 80">
+                            {/* Background track */}
+                            <path
+                              d="M 10 70 A 60 60 0 0 1 130 70"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="12"
+                              strokeLinecap="round"
+                              className="text-muted/30"
+                            />
+                            {/* Colored segments */}
+                            <path d="M 10 70 A 60 60 0 0 1 40 18" fill="none" stroke="#f97316" strokeWidth="12" className="opacity-20" />
+                            <path d="M 40 18 A 60 60 0 0 1 100 18" fill="none" stroke="#10b881" strokeWidth="12" className="opacity-20" />
+                            <path d="M 100 18 A 60 60 0 0 1 130 70" fill="none" stroke="#3b82f6" strokeWidth="12" className="opacity-20" />
+                            
+                            {/* Active segment (approximate) */}
+                            <path
+                              d="M 10 70 A 60 60 0 0 1 130 70"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="12"
+                              strokeLinecap="round"
+                              strokeDasharray="188.5"
+                              strokeDashoffset={188.5 * (1 - Math.min(1, momentumRatio / 2))}
+                              className={`${momentumConfig.text} transition-all duration-1000 ease-out opacity-80`}
+                              style={{ filter: `drop-shadow(0 0 8px currentColor)` }}
+                            />
 
-                    <Separator className="bg-primary/5" />
-
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                      <div className="space-y-4">
-                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-primary flex items-center gap-2">
-                          <Play className="h-3 w-3 fill-current" /> Active Relay
-                        </p>
-                        {taskRunningEntry ? (
-                          <div className="p-8 rounded-[2rem] bg-primary/5 border-2 border-primary/10 text-center space-y-6">
-                            <p className="text-5xl font-black font-mono tracking-tighter tabular-nums text-primary">
-                              {getElapsedTime(taskRunningEntry.startTime)}
-                            </p>
-                            <Button variant="destructive" className="w-full h-14 rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-xl shadow-destructive/20" onClick={() => handleStopTimer(taskRunningEntry.id)}>
-                              <Square className="h-4 w-4 mr-2 fill-current" /> Terminate Session
-                            </Button>
-                          </div>
-                        ) : (
-                          <div className="space-y-4 bg-muted/30 p-6 rounded-[2rem] border border-primary/5">
-                            <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
-                              <div className="min-w-0">
-                                <Select value={timerForm.category} onValueChange={(v) => setTimerForm(prev => ({ ...prev, category: v }))}>
-                                  <SelectTrigger className="bg-background border-none h-12 rounded-xl font-black text-[9px] uppercase tracking-wider w-full overflow-hidden">
-                                    <div className="truncate text-left w-full">
-                                      <SelectValue placeholder="Category" />
-                                    </div>
-                                  </SelectTrigger>
-                                  <SelectContent className="rounded-2xl border-primary/10">
-                                    <SelectItem value={task?.title || 'General'}>
-                                      <div className="flex items-center gap-2">
-                                        <div className="w-1.5 h-1.5 rounded-full" style={{ background: getCategoryColor(task?.title || 'General') }} />
-                                        <span className="truncate">{task?.title || 'General'}</span>
-                                      </div>
-                                    </SelectItem>
-                                    {PRESET_CATEGORIES.map(cat => (
-                                      <SelectItem key={cat} value={cat}>
-                                        <div className="flex items-center gap-2">
-                                          <div className="w-1.5 h-1.5 rounded-full" style={{ background: getCategoryColor(cat) }} />
-                                          <span>{cat}</span>
-                                        </div>
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              <div className="min-w-0">
-                                <Input
-                                  placeholder="Session notes..."
-                                  value={timerForm.description}
-                                  onChange={(e) => setTimerForm({ ...timerForm, description: e.target.value })}
-                                  className="bg-background border-none h-12 rounded-xl font-medium text-xs px-4 w-full"
-                                />
-                              </div>
-                            </div>
-                            <Button className="w-full h-12 rounded-xl font-black uppercase tracking-widest text-[10px] shadow-xl shadow-primary/20" onClick={handleStartTaskTimer} disabled={!!otherTaskRunning}>
-                              <Play className="h-4 w-4 mr-2 fill-current" /> Initiate Timer
-                            </Button>
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="space-y-4">
-                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground flex items-center gap-2">
-                          <Plus className="h-3 w-3" /> Manual Calibration
-                        </p>
-                        <div className="bg-muted/30 p-6 rounded-[2rem] border border-primary/5 space-y-4">
-                          <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
-                            <div className="md:col-span-2 space-y-2">
-                              <p className="text-[8px] font-black text-muted-foreground/60 uppercase ml-1 tracking-widest">Hrs</p>
-                              <Input
-                                type="text"
-                                inputMode="numeric"
-                                value={manualEntry.hours}
-                                onChange={(e) => setManualEntry({ ...manualEntry, hours: e.target.value.replace(/\D/g, '') })}
-                                className="h-12 rounded-xl bg-background/50 border-primary/5 text-center font-black text-lg focus:ring-primary/20 focus:border-primary/20 px-1"
-                              />
-                            </div>
-                            <div className="md:col-span-2 space-y-2">
-                              <p className="text-[8px] font-black text-muted-foreground/60 uppercase ml-1 tracking-widest">Min</p>
-                              <Input
-                                type="text"
-                                inputMode="numeric"
-                                value={manualEntry.minutes}
-                                onChange={(e) => setManualEntry({ ...manualEntry, minutes: e.target.value.replace(/\D/g, '') })}
-                                className="h-12 rounded-xl bg-background/50 border-primary/5 text-center font-black text-lg focus:ring-primary/20 focus:border-primary/20 px-1"
-                              />
-                            </div>
-                            <div className="md:col-span-8">
-                              <Button variant="secondary" className="w-full h-12 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-secondary/10 px-2 group" onClick={handleLogManualEntry}>
-                                <CheckCircle2 className="h-3 w-3 mr-2 group-hover:scale-110 transition-transform" /> Log Past Session
-                              </Button>
-                            </div>
-                          </div>
-
-                          <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
-                            <div className="min-w-0">
-                              <Select
-                                value={manualEntry.category || task?.title || 'General'}
-                                onValueChange={(v) => setManualEntry(prev => ({ ...prev, category: v }))}
-                              >
-                                <SelectTrigger className="bg-background border-none h-12 rounded-xl font-black text-[9px] uppercase tracking-wider w-full overflow-hidden">
-                                  <div className="truncate text-left w-full">
-                                    <SelectValue placeholder="Category" />
-                                  </div>
-                                </SelectTrigger>
-                                <SelectContent className="rounded-2xl border-primary/10">
-                                  <SelectItem value={task?.title || 'General'}>
-                                    <div className="flex items-center gap-2">
-                                      <div className="w-1.5 h-1.5 rounded-full" style={{ background: getCategoryColor(task?.title || 'General') }} />
-                                      <span className="truncate">{task?.title || 'General'}</span>
-                                    </div>
-                                  </SelectItem>
-                                  {PRESET_CATEGORIES.map(cat => (
-                                    <SelectItem key={cat} value={cat}>
-                                      <div className="flex items-center gap-2">
-                                        <div className="w-1.5 h-1.5 rounded-full" style={{ background: getCategoryColor(cat) }} />
-                                        <span>{cat}</span>
-                                      </div>
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            <div className="min-w-0">
-                              <Input placeholder="What happened then?..." value={manualEntry.description} onChange={(e) => setManualEntry({ ...manualEntry, description: e.target.value })} className="bg-background border-none h-12 rounded-xl text-xs font-medium px-4 w-full" />
-                            </div>
-                          </div>
-
-                          <div className="pt-2">
-                            <Button
-                              variant="ghost"
-                              className="w-full h-12 rounded-xl border border-dashed border-primary/20 hover:border-primary/50 hover:bg-primary/5 text-[10px] font-black uppercase tracking-widest gap-2 group"
-                              onClick={() => {
-                                setSelectedDayDate(new Date());
-                                setIsCreationMode(true);
-                                setIsDayDetailOpen(true);
+                            {/* Needle */}
+                            <line
+                              x1="70" y1="70"
+                              x2="70" y2="20"
+                              stroke="currentColor"
+                              strokeWidth="3"
+                              strokeLinecap="round"
+                              className={`${momentumConfig.text} transition-all duration-1000 ease-out`}
+                              style={{ 
+                                transformOrigin: '70px 70px',
+                                transform: `rotate(${Math.max(-90, Math.min(90, (momentumRatio / 2) * 180 - 90))}deg)`
                               }}
-                            >
-                              <div className="flex items-center gap-2">
-                                <Maximize2 className="h-3 w-3 group-hover:scale-110 transition-transform" />
-                                Interactive Timeline Mapping
-                              </div>
-                            </Button>
+                            />
+                            <circle cx="70" cy="70" r="5" className="fill-background stroke-current stroke-2" />
+                          </svg>
+                          <div className="absolute bottom-0 w-full flex flex-col items-center">
+                            <p className={`text-xl font-black tabular-nums tracking-tighter ${momentumConfig.text}`}>
+                              {Math.round(momentumRatio * 100)}%
+                            </p>
+                            <p className={`text-[8px] font-black uppercase tracking-widest ${momentumConfig.text} opacity-80`}>
+                              {momentumConfig.label}
+                            </p>
                           </div>
                         </div>
                       </div>
-                    </div>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" sideOffset={5} className="max-w-[250px] text-xs">
+                      <p>Measures today's time logged against your 7-day rolling average. &gt;100% means you are working harder today than your recent average.</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
 
-                    {/* Compact Chronological Log */}
+              <Separator className="bg-primary/5" />
                     <div className="space-y-4 pt-4">
                       <p className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/40 italic">
                         Historical Timeline {!showAllTimeEntries && recentEntries.length > 5 && `(Recent 5)`}
@@ -1157,7 +1233,16 @@ function TaskDetailPageContent() {
                             {(showAllTimeEntries ? recentEntries : recentEntries.slice(0, 5)).map((entry) => (
                               <div key={entry.id} className="group flex items-center justify-between p-4 rounded-2xl bg-muted/20 border border-transparent hover:border-primary/10 hover:bg-muted/40 transition-all">
                                 <div className="flex flex-col">
-                                  <p className="text-sm font-black text-foreground/80">{entry.description || "Calibration Session"}</p>
+                                  <div className="flex items-center gap-3 mb-0.5">
+                                    <p className="text-sm font-black text-foreground/80">{entry.description || "Calibration Session"}</p>
+                                    {entry.productivityScore ? (
+                                      <div className="flex items-center gap-0.5" title={`Productivity Rating: ${entry.productivityScore}/5`}>
+                                        {Array.from({ length: 5 }).map((_, i) => (
+                                          <Star key={i} className={`h-2.5 w-2.5 ${i < (entry.productivityScore || 0) ? 'fill-amber-500 text-amber-500' : 'fill-muted-foreground/20 text-muted-foreground/20'}`} />
+                                        ))}
+                                      </div>
+                                    ) : null}
+                                  </div>
                                   <p className="text-[10px] font-bold text-muted-foreground uppercase opacity-60">
                                     {toDate(entry.startTime) ? format(toDate(entry.startTime)!, 'MMM d, h:mm a') : 'Unstable Data'} • {formatDuration(getEntryDuration(entry))}
                                   </p>
@@ -1192,6 +1277,434 @@ function TaskDetailPageContent() {
                     </div>
                   </CardContent>
                 </Card>
+
+                {/* Timeline Grid Visualization */}
+                <Card className="border-primary/5 shadow-sm rounded-[2rem] overflow-hidden">
+                  <div className="bg-primary/5 p-6 border-b border-primary/5 flex items-center justify-between">
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-primary/60">Temporal Activity Map</p>
+                      <p className="text-[8px] text-muted-foreground/40 mt-0.5">
+                        {(() => {
+                          const cd = toDate(task.createdAt);
+                          const dd = task.deadline ? toDate(task.deadline) : null;
+                          if (cd && dd) return `${format(cd, 'MMM d')} → ${format(dd, 'MMM d, yyyy')}`;
+                          if (cd) return `From ${format(cd, 'MMM d, yyyy')}`;
+                          return 'Task Journey';
+                        })()}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-3 text-[7px] font-bold">
+                      <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-emerald-500" /><span className="text-muted-foreground/60">Start</span></div>
+                      <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-primary" /><span className="text-muted-foreground/60">Today</span></div>
+                      {task.deadline && <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-red-500" /><span className="text-muted-foreground/60">Deadline</span></div>}
+                    </div>
+                  </div>
+                  <CardContent className="p-6 space-y-6">
+                    {/* Dynamic date-anchored heatmap */}
+                    {(() => {
+                      const today = new Date();
+                      today.setHours(0, 0, 0, 0);
+
+                      const createdDate = toDate(task.createdAt) ? (() => { const d = new Date(toDate(task.createdAt)!); d.setHours(0,0,0,0); return d; })() : today;
+                      const deadlineDate = task.deadline && toDate(task.deadline) ? (() => { const d = new Date(toDate(task.deadline)!); d.setHours(0,0,0,0); return d; })() : null;
+
+                      const rangeEnd = deadlineDate && deadlineDate > today ? deadlineDate : today;
+                      const gridEnd = new Date(rangeEnd);
+                      gridEnd.setDate(gridEnd.getDate() + (6 - gridEnd.getDay())); // Saturday
+
+                      const createdWeekStart = new Date(createdDate);
+                      createdWeekStart.setDate(createdWeekStart.getDate() - createdWeekStart.getDay()); // Sunday
+
+                      const diffTime = gridEnd.getTime() - createdWeekStart.getTime();
+                      const diffWeeks = Math.round(diffTime / (7 * 86400000)) + 1;
+
+                      const minWeeks = 52; // Full year to make the grid substantial and matchable to UI UX
+                      const cappedWeeks = Math.max(minWeeks, diffWeeks);
+
+                      const gridStart = new Date(gridEnd);
+                      gridStart.setDate(gridStart.getDate() - (cappedWeeks * 7 - 1)); // Sunday
+
+                      return (
+                        <div className="space-y-6">
+                          {/* Sleek Journey path banner */}
+                          <div className="relative h-2 mb-8 bg-muted/20 rounded-full mx-3 mt-4">
+                            {deadlineDate && (() => {
+                              const totalSpan = deadlineDate.getTime() - createdDate.getTime();
+                              const elapsed = Math.min(today.getTime() - createdDate.getTime(), totalSpan);
+                              const pct = totalSpan > 0 ? Math.max(0, Math.min(100, (elapsed / totalSpan) * 100)) : 0;
+                              return (
+                                <>
+                                  <div
+                                    className="absolute inset-y-0 left-0 rounded-full"
+                                    style={{ width: `${pct}%`, background: 'linear-gradient(to right, hsl(142 71% 45%), hsl(var(--primary)), hsl(0 84% 60%))' }}
+                                  />
+                                  {/* Today marker on path */}
+                                  <div className="absolute top-1/2 -translate-y-1/2 flex items-center justify-center" style={{ left: `calc(${pct}% - 4px)` }}>
+                                    <div className="w-2.5 h-2.5 rounded-full bg-white ring-2 ring-primary shadow-sm" />
+                                  </div>
+                                </>
+                              );
+                            })()}
+                            
+                            {/* Start flag */}
+                            <div className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 w-4 h-4 rounded-full bg-emerald-500 ring-[4px] ring-background flex items-center justify-center shadow-sm">
+                              <div className="w-1.5 h-1.5 rounded-full bg-white" />
+                            </div>
+
+                            {/* End flag */}
+                            {deadlineDate && (
+                              <div className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 w-4 h-4 rounded-full bg-red-500 ring-[4px] ring-background flex items-center justify-center shadow-sm">
+                                <div className="w-1.5 h-1.5 rounded-full bg-white" />
+                              </div>
+                            )}
+                          </div>
+
+                          {/* GitHub-style Heatmap Container */}
+                          <div className="flex justify-center">
+                            {/* Y-axis Day labels */}
+                            <div className="flex flex-col gap-1 pr-3 pt-6">
+                              {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
+                                <div key={i} className="h-[14px] flex items-center justify-end w-4">
+                                  {i % 2 === 1 && <span className="text-[9px] font-bold text-muted-foreground/40">{d}</span>}
+                                </div>
+                              ))}
+                            </div>
+
+                            {/* Grid scroll container */}
+                            <div className="overflow-x-auto pb-4 scrollbar-thin scrollbar-thumb-primary/10 scrollbar-track-transparent max-w-full">
+                              <div className="flex gap-1 pr-2">
+                                {Array.from({ length: cappedWeeks }).map((_, wi) => {
+                                  const weekStart = new Date(gridStart);
+                                  weekStart.setDate(weekStart.getDate() + wi * 7);
+                                  
+                                  const prevWeekStart = new Date(weekStart);
+                                  prevWeekStart.setDate(prevWeekStart.getDate() - 7);
+                                  const isNewMonth = wi === 0 || weekStart.getMonth() !== prevWeekStart.getMonth();
+
+                                  return (
+                                    <div key={wi} className="flex flex-col gap-1">
+                                      {/* Month label row */}
+                                      <div className="h-5 relative">
+                                        {isNewMonth && (
+                                          <span className="absolute left-0 top-0 text-[10px] font-bold text-muted-foreground/40 whitespace-nowrap z-10">
+                                            {format(weekStart, 'MMM')}
+                                          </span>
+                                        )}
+                                      </div>
+                                      
+                                      {/* 7 days */}
+                                      {[0, 1, 2, 3, 4, 5, 6].map((dow) => {
+                                        const cellDate = new Date(weekStart);
+                                        cellDate.setDate(cellDate.getDate() + dow);
+                                        
+                                        const isFuture = cellDate > today;
+                                        const isCreatedDay = cellDate.getTime() === createdDate.getTime();
+                                        const isDeadlineDay = deadlineDate && cellDate.getTime() === deadlineDate.getTime();
+                                        const isToday = cellDate.getTime() === today.getTime();
+                                        const isInRange = deadlineDate
+                                          ? cellDate >= createdDate && cellDate <= deadlineDate
+                                          : cellDate >= createdDate && cellDate <= today;
+                                        const isPastDeadline = deadlineDate && cellDate > deadlineDate;
+
+                                        const dayEntries = taskEntries.filter(entry => {
+                                          const ed = toDate(entry.startTime);
+                                          if (!ed) return false;
+                                          const d2 = new Date(ed); d2.setHours(0,0,0,0);
+                                          return d2.getTime() === cellDate.getTime();
+                                        });
+                                        const dayMinutes = dayEntries.reduce((s, e) => s + getEntryDuration(e), 0);
+
+                                        let intensityLevel = 0;
+                                        if (dayMinutes > 0) intensityLevel = 1;
+                                        if (dayMinutes >= 30) intensityLevel = 2;
+                                        if (dayMinutes >= 60) intensityLevel = 3;
+                                        if (dayMinutes >= 120) intensityLevel = 4;
+
+                                        let cellClass = '';
+                                        if (isCreatedDay) cellClass = 'ring-2 ring-emerald-500 ring-offset-1 ring-offset-background z-10';
+                                        else if (isDeadlineDay) cellClass = 'ring-2 ring-red-500 ring-offset-1 ring-offset-background z-10';
+                                        else if (isToday) cellClass = 'ring-2 ring-primary ring-offset-1 ring-offset-background z-20';
+
+                                        let bgClass = '';
+                                        if (isPastDeadline && !isDeadlineDay) {
+                                          bgClass = intensityLevel > 0
+                                            ? ['', 'bg-orange-500/30', 'bg-orange-500/50', 'bg-orange-500/80', 'bg-orange-500'][intensityLevel]
+                                            : 'bg-muted/10';
+                                        } else if (isFuture && !isDeadlineDay) {
+                                          bgClass = isInRange ? 'bg-primary/5 border border-primary/10 border-dashed' : 'bg-transparent';
+                                        } else {
+                                          bgClass = ['bg-muted/10', 'bg-primary/30', 'bg-primary/50', 'bg-primary/80', 'bg-primary'][intensityLevel];
+                                        }
+
+                                        return (
+                                          <div
+                                            key={dow}
+                                            className={`w-[14px] h-[14px] rounded-[3px] transition-all duration-150 relative cursor-pointer hover:scale-125 hover:z-30 hover:brightness-125 ${bgClass} ${cellClass}`}
+                                            title={`${format(cellDate, 'EEE, MMM d yyyy')}: ${dayMinutes > 0 ? formatDuration(dayMinutes) : 'No work'}${isCreatedDay ? ' 🚀 Created' : ''}${isToday ? ' 📍 Today' : ''}${isDeadlineDay ? ' 🏁 Deadline' : ''}`}
+                                            onClick={() => {
+                                              if (!isFuture || isDeadlineDay) {
+                                                setSelectedDayDate(cellDate);
+                                                setIsDayDetailOpen(true);
+                                              }
+                                            }}
+                                          >
+                                            {isToday && (
+                                              <div className="absolute inset-0 flex items-center justify-center">
+                                                <div className="w-[4px] h-[4px] rounded-full bg-background" />
+                                              </div>
+                                            )}
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Simplified Inline Legend */}
+                          <div className="flex items-center justify-between pt-6 mt-4 border-t border-primary/10">
+                            <div className="flex items-center gap-4">
+                              <span className="text-[10px] font-black text-muted-foreground/40 uppercase tracking-widest">Activity</span>
+                              <div className="flex items-center gap-1">
+                                <div className="w-[14px] h-[14px] rounded-[3px] bg-muted/10" />
+                                <div className="w-[14px] h-[14px] rounded-[3px] bg-primary/30" />
+                                <div className="w-[14px] h-[14px] rounded-[3px] bg-primary/50" />
+                                <div className="w-[14px] h-[14px] rounded-[3px] bg-primary/80" />
+                                <div className="w-[14px] h-[14px] rounded-[3px] bg-primary" />
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-6">
+                              <div className="flex items-center gap-2">
+                                <div className="w-3.5 h-3.5 rounded-full ring-2 ring-emerald-500/50 bg-emerald-500" />
+                                <span className="text-[10px] font-bold text-muted-foreground/60 uppercase tracking-wider">Created</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <div className="w-3.5 h-3.5 rounded-full ring-2 ring-primary/50 bg-primary" />
+                                <span className="text-[10px] font-bold text-muted-foreground/60 uppercase tracking-wider">Today</span>
+                              </div>
+                              {task.deadline && (
+                                <div className="flex items-center gap-2">
+                                  <div className="w-3.5 h-3.5 rounded-full ring-2 ring-red-500/50 bg-red-500" />
+                                  <span className="text-[10px] font-bold text-muted-foreground/60 uppercase tracking-wider">Deadline</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* Peak Performance Hours */}
+                    <div className="space-y-4 pt-6 border-t border-primary/5">
+                      <div className="flex items-center justify-between">
+                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/60">Peak Performance Hours</p>
+                        <div className="flex items-center gap-1">
+                          <Zap className="h-3 w-3 text-yellow-500 fill-yellow-500" />
+                          <p className="text-[8px] font-black text-yellow-500 uppercase tracking-widest">Efficiency Zones</p>
+                        </div>
+                      </div>
+                      <div className="bg-muted/10 p-4 rounded-2xl">
+                        <div className="flex gap-1 h-12 items-end">
+                          {peakHours.map((mins, hour) => {
+                            const maxPeak = Math.max(1, ...peakHours);
+                            const intensity = mins / maxPeak;
+                            return (
+                              <div 
+                                key={hour} 
+                                className="flex-1 group relative"
+                                style={{ height: '100%' }}
+                              >
+                                <div 
+                                  className={`absolute bottom-0 left-0 w-full rounded-sm transition-all duration-500 ${
+                                    intensity > 0.8 ? 'bg-primary' : intensity > 0.4 ? 'bg-primary/60' : intensity > 0 ? 'bg-primary/20' : 'bg-muted/20'
+                                  }`}
+                                  style={{ 
+                                    height: `${Math.max(8, intensity * 100)}%`,
+                                  }}
+                                />
+                                <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-background border border-primary/10 rounded px-2 py-1 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-20 whitespace-nowrap">
+                                  <p className="text-[8px] font-black">{hour}:00: {formatDuration(mins)}</p>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <div className="flex justify-between mt-2 px-1">
+                          <p className="text-[7px] font-bold text-muted-foreground/40">12 AM</p>
+                          <p className="text-[7px] font-bold text-muted-foreground/40">6 AM</p>
+                          <p className="text-[7px] font-bold text-muted-foreground/40">12 PM</p>
+                          <p className="text-[7px] font-bold text-muted-foreground/40">6 PM</p>
+                          <p className="text-[7px] font-bold text-muted-foreground/40">11 PM</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Session Length Distribution */}
+                    {taskEntries.length > 0 && (
+                      <div className="space-y-4 pt-6 border-t border-primary/5">
+                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/60">Session Depth Analysis</p>
+                        <div className="grid grid-cols-4 gap-2">
+                          {[
+                            { label: 'Micro', range: '0-15m', filter: (m: number) => m <= 15, color: 'bg-blue-400' },
+                            { label: 'Short', range: '15-45m', filter: (m: number) => m > 15 && m <= 45, color: 'bg-emerald-400' },
+                            { label: 'Deep', range: '45-90m', filter: (m: number) => m > 45 && m <= 90, color: 'bg-primary' },
+                            { label: 'Hyper', range: '90m+', filter: (m: number) => m > 90, color: 'bg-purple-500' },
+                          ].map((bucket) => {
+                            const count = taskEntries.filter(e => bucket.filter(getEntryDuration(e))).length;
+                            const pct = (count / taskEntries.length) * 100;
+                            return (
+                              <div key={bucket.label} className="bg-muted/10 p-3 rounded-xl space-y-2">
+                                <div className="flex items-center justify-between">
+                                  <p className="text-[7px] font-black uppercase text-muted-foreground">{bucket.label}</p>
+                                  <p className="text-[7px] font-bold opacity-40">{bucket.range}</p>
+                                </div>
+                                <p className="text-sm font-black">{count}</p>
+                                <div className="h-1 w-full bg-muted rounded-full overflow-hidden">
+                                  <div className={`h-full ${bucket.color} transition-all duration-1000`} style={{ width: `${pct}%` }} />
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Deadline Countdown */}
+                    {task.deadline && toDate(task.deadline) && (
+                      <div className="pt-4 border-t border-primary/5">
+                        <div className="flex items-center justify-between mb-2">
+                          <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest">Time Remaining</p>
+                          <CalendarIcon className="h-3 w-3 text-destructive/60" />
+                        </div>
+                        {(() => {
+                          const now = Date.now();
+                          const deadlineTime = toDate(task.deadline)!.getTime();
+                          const createdTime = toDate(task.createdAt)?.getTime() || now;
+                          const totalDuration = deadlineTime - createdTime;
+                          const elapsed = now - createdTime;
+                          const remaining = deadlineTime - now;
+                          const percentElapsed = Math.min(100, Math.max(0, (elapsed / totalDuration) * 100));
+                          const isOverdue = remaining < 0;
+
+                          return (
+                            <>
+                              <div className="w-full h-2 bg-muted rounded-full overflow-hidden mb-2">
+                                <div
+                                  className={`h-full transition-all ${isOverdue ? 'bg-destructive' : 'bg-gradient-to-r from-green-500 via-yellow-500 to-destructive'}`}
+                                  style={{ width: `${percentElapsed}%` }}
+                                />
+                              </div>
+                              <p className={`text-[10px] font-black ${isOverdue ? 'text-destructive' : 'text-foreground/60'}`}>
+                                {isOverdue ? 'OVERDUE' : formatDistanceToNow(toDate(task.deadline)!, { addSuffix: false }).toUpperCase()}
+                              </p>
+                            </>
+                          );
+                        })()}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Dependency Graph Visualization */}
+                <Card className="border-primary/5 shadow-sm rounded-[2rem] overflow-hidden bg-muted/5 relative">
+                  <div className="p-6 bg-muted/20 border-b border-primary/5 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Link2 className="h-4 w-4 text-primary" />
+                      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/60">Strategic Context Map</p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <Badge variant="outline" className={`text-[8px] font-black uppercase tracking-widest ${isTaskBlocked ? 'text-destructive border-destructive/20' : 'text-green-500 border-green-500/20'}`}>
+                        {isTaskBlocked ? 'Path Blocked' : 'Path Clear'}
+                      </Badge>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 rounded-lg hover:bg-primary/10 transition-colors"
+                        onClick={() => setIsDependencyModalOpen(true)}
+                        title="Edit Dependencies"
+                      >
+                        <Settings className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                  <CardContent className="p-8 relative min-h-[300px] flex items-center justify-between gap-4">
+                    {/* Tactical Grid Background */}
+                    <div className="absolute inset-0 opacity-[0.03] pointer-events-none"
+                      style={{ backgroundImage: 'radial-gradient(circle, currentColor 1px, transparent 1px)', backgroundSize: '20px 20px' }} />
+
+                    {/* Pre-requisites Column */}
+                    <div className="flex flex-col gap-8 z-10 w-1/3">
+                      <p className="text-[8px] font-black text-muted-foreground/40 uppercase tracking-[0.2em] mb-2 text-center">Pre-requisites</p>
+                      {dependencies.length > 0 ? dependencies.map(dep => (
+                        <div key={dep.id}
+                          className={`p-3 rounded-xl border-2 transition-all hover:scale-105 cursor-pointer relative group ${dep.status === 'done' ? 'bg-green-500/10 border-green-500/20 text-green-500' : 'bg-destructive/10 border-destructive/20 text-destructive'}`}
+                          onClick={() => router.push(`/tasks/${dep.id}`)}>
+                          <p className="text-[10px] font-black truncate">{dep.title}</p>
+                          <div className={`absolute -right-1 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full ${dep.status === 'done' ? 'bg-green-500' : 'bg-destructive'} border border-background shadow-[0_0_8px_currentColor]`} />
+                        </div>
+                      )) : (
+                        <div className="py-8 border border-dashed border-primary/10 rounded-xl text-center">
+                          <p className="text-[9px] font-bold opacity-30 italic">No Ancestors</p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Center Node: Current Task */}
+                    <div className="z-20 w-1/3 flex flex-col items-center">
+                      <div className={`p-5 rounded-[2rem] shadow-2xl ring-8 transition-all duration-500 ${isTaskBlocked ? 'bg-destructive ring-destructive/10' : 'bg-primary ring-primary/10'} text-white text-center w-full max-w-[160px] relative`}>
+                        <Zap className="h-4 w-4 absolute -top-2 -right-2 text-yellow-400 drop-shadow-lg" />
+                        <p className="text-[10px] font-black uppercase tracking-widest line-clamp-2">THIS TASK</p>
+                        <div className={`mt-2 h-1 rounded-full bg-white/30 overflow-hidden`}>
+                          <div className="h-full bg-white transition-all duration-1000" style={{ width: `${task.status === 'done' ? 100 : task.status === 'in-progress' ? 50 : 10}%` }} />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Dependents Column */}
+                    <div className="flex flex-col gap-8 z-10 w-1/3">
+                      <p className="text-[8px] font-black text-muted-foreground/40 uppercase tracking-[0.2em] mb-2 text-center">Unlocks</p>
+                      {dependents.length > 0 ? dependents.map(dep => (
+                        <div key={dep.id}
+                          className={`p-3 rounded-xl border-2 transition-all hover:scale-105 cursor-pointer relative ${areDependentsUnlocked ? 'bg-primary/10 border-primary/20 text-primary' : 'bg-muted/10 border-muted/20 text-muted-foreground opacity-60'}`}
+                          onClick={() => router.push(`/tasks/${dep.id}`)}>
+                          <p className="text-[10px] font-black truncate">{dep.title}</p>
+                          <div className={`absolute -left-1 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full ${areDependentsUnlocked ? 'bg-primary' : 'bg-muted-foreground/40'} border border-background shadow-[0_0_8px_currentColor]`} />
+                        </div>
+                      )) : (
+                        <div className="py-8 border border-dashed border-primary/10 rounded-xl text-center">
+                          <p className="text-[9px] font-bold opacity-30 italic">No Dependents</p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Connection Lines (Static SVG approximation for robustness) */}
+                    <svg className="absolute inset-0 w-full h-full pointer-events-none stroke-current opacity-20" style={{ color: 'hsl(var(--primary))' }}>
+                      <defs>
+                        <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="0" refY="3.5" orient="auto">
+                          <polygon points="0 0, 10 3.5, 0 7" fill="currentColor" />
+                        </marker>
+                      </defs>
+                      {/* Left connects to Center (simplified visual only) */}
+                      {dependencies.length > 0 && <path d="M 33% 150 L 50% 150" fill="none" strokeWidth="1" strokeDasharray="5,3" />}
+                      {/* Center connects to Right (simplified visual only) */}
+                      {dependents.length > 0 && <path d="M 50% 150 L 66% 150" fill="none" strokeWidth="1" strokeDasharray="5,3" />}
+                    </svg>
+                  </CardContent>
+
+                  {/* Footer Context */}
+                  <div className="p-4 bg-primary/5 text-center">
+                    <p className="text-[8px] font-bold text-muted-foreground/60 tracking-widest uppercase">
+                      {isTaskBlocked ? 'Current Objective is Stalled by Pre-requisites' : areDependentsUnlocked ? 'Objective Completed - Critical Path Unlocked' : 'Operational Independence Achieved'}
+                    </p>
+                  </div>
+                </Card>
+
+
+              </TabsContent>
+
+              <TabsContent value='comms' className='space-y-8 mt-0 focus-visible:outline-none'>
 
                 {/* Secondary Streams - Tabs */}
                 <Tabs defaultValue="comments" className="w-full">
@@ -1310,10 +1823,322 @@ function TaskDetailPageContent() {
                     </Card>
                   </TabsContent>
                 </Tabs>
-              </div>
+              </TabsContent>
+            </Tabs>
+          </div>
 
-              {/* Right Column: Status & Intelligence */}
-              <div className="lg:col-span-4 space-y-8">
+              {/* Right Sidebar: Sticky Action Hub & Properties */}
+              <div className="lg:col-span-4 space-y-6 sticky top-6 self-start">
+
+                {/* ── Graphical Insight Card ── */}
+                {(() => {
+                  // Radial ring computation
+                  const estimated = task.estimatedDuration || 0;
+                  const logged = totalTrackedMinutes;
+                  const ringPct = estimated > 0 ? logged / estimated : 0;
+                  const displayPct = Math.min(1, ringPct);
+                  const overflowPct = ringPct > 1 ? Math.min(1, ringPct - 1) : 0;
+                  const radius = 44;
+                  const circumference = 2 * Math.PI * radius;
+                  const dashOffset = circumference * (1 - displayPct);
+                  const overflowOffset = circumference * (1 - overflowPct);
+                  const ringColor =
+                    ringPct >= 1 ? '#ef4444'
+                    : ringPct >= 0.8 ? '#f97316'
+                    : ringPct >= 0.5 ? '#eab308'
+                    : '#22c55e';
+                  const ringGlow =
+                    ringPct >= 1 ? 'drop-shadow(0 0 8px rgba(239,68,68,0.7))'
+                    : ringPct >= 0.8 ? 'drop-shadow(0 0 8px rgba(249,115,22,0.6))'
+                    : 'drop-shadow(0 0 8px rgba(34,197,94,0.5))';
+
+                  // 7-day sparkline computation
+                  const sparkDays = Array.from({ length: 7 }).map((_, i) => {
+                    const d = subDays(new Date(), 6 - i);
+                    d.setHours(0, 0, 0, 0);
+                    const mins = taskEntries.reduce((sum, e) => {
+                      const s = toDate(e.startTime);
+                      if (!s) return sum;
+                      const sd = new Date(s); sd.setHours(0, 0, 0, 0);
+                      return sd.getTime() === d.getTime() ? sum + getEntryDuration(e) : sum;
+                    }, 0);
+                    const isToday = i === 6;
+                    return { mins, label: format(d, 'EEE'), isToday };
+                  });
+                  const maxMins = Math.max(1, ...sparkDays.map(d => d.mins));
+
+                  return (
+                    <div className="rounded-[2rem] bg-muted/20 border border-primary/5 p-6 space-y-6 shadow-sm">
+
+                      {/* Radial Time Burn Ring */}
+                      <div className="flex items-center gap-6">
+                        <div className="relative flex-shrink-0" style={{ width: 108, height: 108 }}>
+                          <svg width="108" height="108" viewBox="0 0 108 108" className="rotate-[-90deg]">
+                            {/* Track */}
+                            <circle
+                              cx="54" cy="54" r={radius}
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="8"
+                              className="text-muted/40"
+                            />
+                            {/* Progress arc */}
+                            <circle
+                              cx="54" cy="54" r={radius}
+                              fill="none"
+                              stroke={ringColor}
+                              strokeWidth="8"
+                              strokeLinecap="round"
+                              strokeDasharray={circumference}
+                              strokeDashoffset={dashOffset}
+                              style={{
+                                transition: 'stroke-dashoffset 1.2s cubic-bezier(0.4,0,0.2,1)',
+                                filter: ringGlow
+                              }}
+                            />
+                            {/* Overflow arc (only visible if > 100%) */}
+                            {overflowPct > 0 && (
+                              <circle
+                                cx="54" cy="54" r={radius}
+                                fill="none"
+                                stroke="#ef4444"
+                                strokeWidth="4"
+                                strokeLinecap="round"
+                                strokeDasharray={circumference}
+                                strokeDashoffset={overflowOffset}
+                                className="opacity-40"
+                                style={{
+                                  transition: 'stroke-dashoffset 1.2s cubic-bezier(0.4,0,0.2,1)',
+                                  filter: 'drop-shadow(0 0 12px rgba(239,68,68,0.9))'
+                                }}
+                              />
+                            )}
+                          </svg>
+                          {/* Center text */}
+                          <div className="absolute inset-0 flex flex-col items-center justify-center">
+                            <span className="text-lg font-black tabular-nums leading-none" style={{ color: ringColor }}>
+                              {estimated > 0 ? `${Math.round(ringPct * 100)}%` : '—'}
+                            </span>
+                            <span className="text-[8px] font-black uppercase tracking-widest text-muted-foreground/50 mt-0.5">
+                              {estimated > 0 ? 'of est.' : 'no est.'}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Ring legend */}
+                        <div className="flex-1 space-y-3">
+                          <div className="space-y-0.5">
+                            <p className="text-[8px] font-black uppercase tracking-widest text-muted-foreground/50">Logged</p>
+                            <p className="text-xl font-black tabular-nums">{formatDuration(logged)}</p>
+                          </div>
+                          <div className="h-px bg-primary/5" />
+                          <div className="space-y-0.5">
+                            <p className="text-[8px] font-black uppercase tracking-widest text-muted-foreground/50">Estimated</p>
+                            <p className="text-sm font-bold text-muted-foreground">
+                              {estimated > 0 ? formatDuration(estimated) : <span className="italic opacity-40">Not set</span>}
+                            </p>
+                          </div>
+                          {logged > 0 && estimated > 0 && logged > estimated && (
+                            <p className="text-[9px] font-black text-destructive uppercase tracking-widest">
+                              +{formatDuration(logged - estimated)} over
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* 7-Day Session Sparkline */}
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <p className="text-[8px] font-black uppercase tracking-widest text-muted-foreground/50">Last 7 Days</p>
+                          <p className="text-[8px] font-black text-primary">{formatDuration(todayTrackedMinutes)} today</p>
+                        </div>
+                        <div className="flex items-end gap-1.5 h-12">
+                          {sparkDays.map((day, i) => {
+                            const fillPct = day.mins > 0 ? Math.max(14, Math.round((day.mins / maxMins) * 100)) : 0;
+                            return (
+                              <div
+                                key={i}
+                                className="flex-1 relative rounded-sm overflow-hidden bg-muted/30"
+                                style={{ height: 48 }}
+                                title={`${day.label}: ${formatDuration(day.mins)}`}
+                              >
+                                {/* Fill bar grows from bottom */}
+                                <div
+                                  className={`w-full absolute bottom-0 left-0 rounded-sm transition-all duration-700 ${
+                                    day.isToday
+                                      ? 'bg-primary shadow-[0_0_10px_hsl(var(--primary)/0.6)]'
+                                      : day.mins > 0
+                                        ? 'bg-primary/50'
+                                        : 'hidden'
+                                  }`}
+                                  style={{ height: `${fillPct}%` }}
+                                />
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <div className="flex gap-1.5">
+                          {sparkDays.map((day, i) => (
+                            <div key={i} className="flex-1 text-center">
+                              <p className={`text-[7px] font-black uppercase ${day.isToday ? 'text-primary' : 'text-muted-foreground/40'}`}>
+                                {day.label[0]}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                    </div>
+                  );
+                })()}
+
+                {/* Sticky Action Hub: Timer & Logging */}
+                <div className="space-y-4">
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-primary flex items-center gap-2 pl-2">
+                    <Play className="h-3 w-3 fill-current" /> Active Relay
+                  </p>
+                  {taskRunningEntry ? (
+                    <div className="p-8 rounded-[2rem] bg-primary/5 border-2 border-primary/10 text-center space-y-6 shadow-sm">
+                      <p className="text-5xl font-black font-mono tracking-tighter tabular-nums text-primary">
+                        {getElapsedTime(taskRunningEntry.startTime)}
+                      </p>
+                      <Button variant="destructive" className="w-full h-14 rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-xl shadow-destructive/20" onClick={() => handleStopTimer(taskRunningEntry.id)}>
+                        <Square className="h-4 w-4 mr-2 fill-current" /> Terminate Session
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="space-y-4 bg-muted/30 p-6 rounded-[2rem] border border-primary/5 shadow-sm">
+                      <div className="grid grid-cols-1 gap-3">
+                        <div className="min-w-0">
+                          <Select value={timerForm.category} onValueChange={(v) => setTimerForm(prev => ({ ...prev, category: v }))}>
+                            <SelectTrigger className="bg-background border-none h-12 rounded-xl font-black text-[9px] uppercase tracking-wider w-full overflow-hidden">
+                              <div className="truncate text-left w-full">
+                                <SelectValue placeholder="Category" />
+                              </div>
+                            </SelectTrigger>
+                            <SelectContent className="rounded-2xl border-primary/10">
+                              <SelectItem value={task?.title || 'General'}>
+                                <div className="flex items-center gap-2">
+                                  <div className="w-1.5 h-1.5 rounded-full" style={{ background: getCategoryColor(task?.title || 'General') }} />
+                                  <span className="truncate">{task?.title || 'General'}</span>
+                                </div>
+                              </SelectItem>
+                              {PRESET_CATEGORIES.map(cat => (
+                                <SelectItem key={cat} value={cat}>
+                                  <div className="flex items-center gap-2">
+                                    <div className="w-1.5 h-1.5 rounded-full" style={{ background: getCategoryColor(cat) }} />
+                                    <span>{cat}</span>
+                                  </div>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="min-w-0">
+                          <Input
+                            placeholder="Session notes..."
+                            value={timerForm.description}
+                            onChange={(e) => setTimerForm({ ...timerForm, description: e.target.value })}
+                            className="bg-background border-none h-12 rounded-xl font-medium text-xs px-4 w-full"
+                          />
+                        </div>
+                      </div>
+                      <Button className="w-full h-12 rounded-xl font-black uppercase tracking-widest text-[10px] shadow-xl shadow-primary/20" onClick={handleStartTaskTimer} disabled={!!otherTaskRunning}>
+                        <Play className="h-4 w-4 mr-2 fill-current" /> Initiate Timer
+                      </Button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Quick Manual Calibration */}
+                <div className="space-y-4 pt-2">
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground flex items-center gap-2 pl-2">
+                    <Plus className="h-3 w-3" /> Manual Calibration
+                  </p>
+                  <div className="bg-muted/30 p-6 rounded-[2rem] border border-primary/5 space-y-4 shadow-sm">
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+                      <div className="md:col-span-3 space-y-2">
+                        <p className="text-[8px] font-black text-muted-foreground/60 uppercase ml-1 tracking-widest">Hrs</p>
+                        <Input
+                          type="text"
+                          inputMode="numeric"
+                          value={manualEntry.hours}
+                          onChange={(e) => setManualEntry({ ...manualEntry, hours: e.target.value.replace(/\D/g, '') })}
+                          className="h-10 rounded-xl bg-background/50 border-primary/5 text-center font-black text-sm focus:ring-primary/20 px-1"
+                        />
+                      </div>
+                      <div className="md:col-span-3 space-y-2">
+                        <p className="text-[8px] font-black text-muted-foreground/60 uppercase ml-1 tracking-widest">Min</p>
+                        <Input
+                          type="text"
+                          inputMode="numeric"
+                          value={manualEntry.minutes}
+                          onChange={(e) => setManualEntry({ ...manualEntry, minutes: e.target.value.replace(/\D/g, '') })}
+                          className="h-10 rounded-xl bg-background/50 border-primary/5 text-center font-black text-sm focus:ring-primary/20 px-1"
+                        />
+                      </div>
+                      <div className="md:col-span-6">
+                        <Button variant="secondary" className="w-full h-10 rounded-xl font-black text-[9px] uppercase tracking-widest shadow-lg shadow-secondary/10 px-2 group" onClick={handleLogManualEntry}>
+                          <CheckCircle2 className="h-3 w-3 mr-1.5 group-hover:scale-110 transition-transform" /> Log Past
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Category & Description */}
+                    <div className="grid grid-cols-1 gap-3">
+                      <div className="min-w-0">
+                        <Select
+                          value={manualEntry.category || task?.title || 'General'}
+                          onValueChange={(v) => setManualEntry(prev => ({ ...prev, category: v }))}
+                        >
+                          <SelectTrigger className="bg-background border-none h-10 rounded-xl font-black text-[9px] uppercase tracking-wider w-full overflow-hidden">
+                            <div className="truncate text-left w-full">
+                              <SelectValue placeholder="Category" />
+                            </div>
+                          </SelectTrigger>
+                          <SelectContent className="rounded-2xl border-primary/10">
+                            <SelectItem value={task?.title || 'General'}>
+                              <div className="flex items-center gap-2">
+                                <div className="w-1.5 h-1.5 rounded-full" style={{ background: getCategoryColor(task?.title || 'General') }} />
+                                <span className="truncate">{task?.title || 'General'}</span>
+                              </div>
+                            </SelectItem>
+                            {PRESET_CATEGORIES.map(cat => (
+                              <SelectItem key={cat} value={cat}>
+                                <div className="flex items-center gap-2">
+                                  <div className="w-1.5 h-1.5 rounded-full" style={{ background: getCategoryColor(cat) }} />
+                                  <span>{cat}</span>
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="min-w-0">
+                        <Input
+                          placeholder="What happened then?..."
+                          value={manualEntry.description}
+                          onChange={(e) => setManualEntry({ ...manualEntry, description: e.target.value })}
+                          className="bg-background border-none h-10 rounded-xl text-xs font-medium px-4 w-full"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Interactive Timeline Mapping */}
+                    <Button
+                      variant="ghost"
+                      className="w-full h-11 rounded-xl border border-dashed border-primary/20 hover:border-primary/50 hover:bg-primary/5 text-[10px] font-black uppercase tracking-widest gap-2 group"
+                      onClick={() => {
+                        setSelectedDayDate(new Date());
+                        setIsCreationMode(true);
+                        setIsDayDetailOpen(true);
+                      }}
+                    >
+                      <Maximize2 className="h-3 w-3 group-hover:scale-110 transition-transform" />
+                      Interactive Timeline Mapping
+                    </Button>
+                  </div>
+                </div>
 
                 {/* Strategic Context Card */}
                 {(linkedProject || linkedGoal) && (
@@ -1482,298 +2307,6 @@ function TaskDetailPageContent() {
                   </CardContent>
                 </Card>
 
-                {/* Timeline Grid Visualization */}
-                <Card className="border-primary/5 shadow-sm rounded-[2rem] overflow-hidden">
-                  <div className="bg-primary/5 p-6 border-b border-primary/5">
-                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-primary/60">Temporal Activity Map</p>
-                  </div>
-                  <CardContent className="p-6 space-y-6">
-                    {/* GitHub-style Contribution Grid */}
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest">Activity Heatmap</p>
-                        <p className="text-[8px] font-bold text-muted-foreground/60">Last 8 Weeks</p>
-                      </div>
-
-                      {/* Week labels */}
-                      <div className="flex gap-1">
-                        <div className="w-6"></div>
-                        <div className="flex-1 grid grid-cols-8 gap-1">
-                          {Array.from({ length: 8 }).map((_, weekIndex) => {
-                            const weekDate = new Date();
-                            weekDate.setDate(weekDate.getDate() - (7 - weekIndex) * 7);
-                            return (
-                              <div key={weekIndex} className="text-center">
-                                <p className="text-[7px] font-bold text-muted-foreground/40">
-                                  {format(weekDate, 'MMM d')}
-                                </p>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      {/* Grid by day of week */}
-                      {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((dayName, dayOfWeek) => (
-                        <div key={dayName} className="flex gap-1 items-center">
-                          <div className="w-6">
-                            <p className="text-[7px] font-bold text-muted-foreground/60">{dayName[0]}</p>
-                          </div>
-                          <div className="flex-1 grid grid-cols-8 gap-1">
-                            {Array.from({ length: 8 }).map((_, weekIndex) => {
-                              const date = new Date();
-                              // Calculate the date for this cell
-                              const daysBack = (7 - weekIndex) * 7 + (6 - dayOfWeek);
-                              date.setDate(date.getDate() - daysBack);
-                              date.setHours(0, 0, 0, 0);
-
-                              // Skip future dates
-                              if (date > new Date()) {
-                                return <div key={weekIndex} className="aspect-square"></div>;
-                              }
-
-                              const dayEntries = taskEntries.filter(entry => {
-                                const entryDate = toDate(entry.startTime);
-                                if (!entryDate) return false;
-                                const entryDay = new Date(entryDate);
-                                entryDay.setHours(0, 0, 0, 0);
-                                return entryDay.getTime() === date.getTime();
-                              });
-
-                              const dayMinutes = dayEntries.reduce((sum, entry) => sum + getEntryDuration(entry), 0);
-
-                              // 5-level intensity (like GitHub)
-                              let intensityLevel = 0;
-                              if (dayMinutes > 0) intensityLevel = 1;
-                              if (dayMinutes >= 30) intensityLevel = 2;
-                              if (dayMinutes >= 60) intensityLevel = 3;
-                              if (dayMinutes >= 120) intensityLevel = 4;
-
-                              const isToday = date.toDateString() === new Date().toDateString();
-                              const isDeadlineDay = task.deadline && toDate(task.deadline) &&
-                                new Date(toDate(task.deadline)!).toDateString() === date.toDateString();
-
-                              // Date range highlighting (Airbnb-style)
-                              const createdDate = toDate(task.createdAt);
-                              const deadlineDate = task.deadline ? toDate(task.deadline) : null;
-
-                              let isInRange = false;
-                              let isRangeStart = false;
-                              let isRangeEnd = false;
-
-                              if (createdDate && deadlineDate) {
-                                const created = new Date(createdDate);
-                                created.setHours(0, 0, 0, 0);
-                                const deadline = new Date(deadlineDate);
-                                deadline.setHours(0, 0, 0, 0);
-
-                                isRangeStart = date.getTime() === created.getTime();
-                                isRangeEnd = date.getTime() === deadline.getTime();
-                                isInRange = date.getTime() >= created.getTime() && date.getTime() <= deadline.getTime();
-                              }
-
-                              const intensityColors = [
-                                'bg-muted/50',
-                                'bg-primary/20',
-                                'bg-primary/40',
-                                'bg-primary/70',
-                                'bg-primary'
-                              ];
-
-                              return (
-                                <div
-                                  key={weekIndex}
-                                  className={`aspect-square rounded-sm transition-all relative ${intensityColors[intensityLevel]} ${isRangeStart
-                                    ? 'ring-2 ring-green-500 ring-offset-1 ring-offset-background scale-110'
-                                    : isRangeEnd
-                                      ? 'ring-2 ring-destructive ring-offset-1 ring-offset-background scale-110'
-                                      : isInRange
-                                        ? 'ring-1 ring-primary/30'
-                                        : isToday
-                                          ? 'ring-1 ring-primary scale-110'
-                                          : ''
-                                    } hover:scale-125 hover:ring-1 hover:ring-primary/50 cursor-pointer`}
-                                  title={`${format(date, 'MMM d, yyyy')}: ${formatDuration(dayMinutes)}${isRangeStart ? ' (START)' : ''}${isRangeEnd ? ' (DEADLINE)' : ''}${isToday ? ' (TODAY)' : ''}`}
-                                  onClick={() => {
-                                    setSelectedDayDate(date);
-                                    setIsDayDetailOpen(true);
-                                  }}
-                                >
-                                  {/* Range overlay */}
-                                  {isInRange && !isRangeStart && !isRangeEnd && (
-                                    <div className="absolute inset-0 bg-primary/5 rounded-sm"></div>
-                                  )}
-
-                                  {/* Start marker */}
-                                  {isRangeStart && (
-                                    <div className="absolute inset-0 flex items-center justify-center">
-                                      <div className="w-1.5 h-1.5 rounded-full bg-green-500"></div>
-                                    </div>
-                                  )}
-
-                                  {/* End/Deadline marker */}
-                                  {isRangeEnd && (
-                                    <div className="absolute inset-0 flex items-center justify-center">
-                                      <div className="w-1.5 h-1.5 rounded-full bg-destructive"></div>
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      ))}
-
-                      {/* Legend */}
-                      <div className="flex items-center justify-between pt-2 border-t border-primary/5">
-                        <p className="text-[7px] font-bold text-muted-foreground/60">Less</p>
-                        <div className="flex items-center gap-1">
-                          <div className="w-3 h-3 rounded-sm bg-muted/50"></div>
-                          <div className="w-3 h-3 rounded-sm bg-primary/20"></div>
-                          <div className="w-3 h-3 rounded-sm bg-primary/40"></div>
-                          <div className="w-3 h-3 rounded-sm bg-primary/70"></div>
-                          <div className="w-3 h-3 rounded-sm bg-primary"></div>
-                        </div>
-                        <p className="text-[7px] font-bold text-muted-foreground/60">More</p>
-                      </div>
-                      <div className="flex items-center justify-center gap-4 text-[7px] font-bold text-muted-foreground/60">
-                        <span>0min</span>
-                        <span>30min</span>
-                        <span>1h</span>
-                        <span>2h+</span>
-                      </div>
-                    </div>
-
-                    {/* Deadline Countdown */}
-                    {task.deadline && toDate(task.deadline) && (
-                      <div className="pt-4 border-t border-primary/5">
-                        <div className="flex items-center justify-between mb-2">
-                          <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest">Time Remaining</p>
-                          <CalendarIcon className="h-3 w-3 text-destructive/60" />
-                        </div>
-                        {(() => {
-                          const now = Date.now();
-                          const deadlineTime = toDate(task.deadline)!.getTime();
-                          const createdTime = toDate(task.createdAt)?.getTime() || now;
-                          const totalDuration = deadlineTime - createdTime;
-                          const elapsed = now - createdTime;
-                          const remaining = deadlineTime - now;
-                          const percentElapsed = Math.min(100, Math.max(0, (elapsed / totalDuration) * 100));
-                          const isOverdue = remaining < 0;
-
-                          return (
-                            <>
-                              <div className="w-full h-2 bg-muted rounded-full overflow-hidden mb-2">
-                                <div
-                                  className={`h-full transition-all ${isOverdue ? 'bg-destructive' : 'bg-gradient-to-r from-green-500 via-yellow-500 to-destructive'}`}
-                                  style={{ width: `${percentElapsed}%` }}
-                                />
-                              </div>
-                              <p className={`text-[10px] font-black ${isOverdue ? 'text-destructive' : 'text-foreground/60'}`}>
-                                {isOverdue ? 'OVERDUE' : formatDistanceToNow(toDate(task.deadline)!, { addSuffix: false }).toUpperCase()}
-                              </p>
-                            </>
-                          );
-                        })()}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-
-                {/* Dependency Graph Visualization */}
-                <Card className="border-primary/5 shadow-sm rounded-[2rem] overflow-hidden bg-muted/5 relative">
-                  <div className="p-6 bg-muted/20 border-b border-primary/5 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Link2 className="h-4 w-4 text-primary" />
-                      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/60">Strategic Context Map</p>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <Badge variant="outline" className={`text-[8px] font-black uppercase tracking-widest ${isTaskBlocked ? 'text-destructive border-destructive/20' : 'text-green-500 border-green-500/20'}`}>
-                        {isTaskBlocked ? 'Path Blocked' : 'Path Clear'}
-                      </Badge>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 rounded-lg hover:bg-primary/10 transition-colors"
-                        onClick={() => setIsDependencyModalOpen(true)}
-                        title="Edit Dependencies"
-                      >
-                        <Settings className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  </div>
-                  <CardContent className="p-8 relative min-h-[300px] flex items-center justify-between gap-4">
-                    {/* Tactical Grid Background */}
-                    <div className="absolute inset-0 opacity-[0.03] pointer-events-none"
-                      style={{ backgroundImage: 'radial-gradient(circle, currentColor 1px, transparent 1px)', backgroundSize: '20px 20px' }} />
-
-                    {/* Pre-requisites Column */}
-                    <div className="flex flex-col gap-8 z-10 w-1/3">
-                      <p className="text-[8px] font-black text-muted-foreground/40 uppercase tracking-[0.2em] mb-2 text-center">Pre-requisites</p>
-                      {dependencies.length > 0 ? dependencies.map(dep => (
-                        <div key={dep.id}
-                          className={`p-3 rounded-xl border-2 transition-all hover:scale-105 cursor-pointer relative group ${dep.status === 'done' ? 'bg-green-500/10 border-green-500/20 text-green-500' : 'bg-destructive/10 border-destructive/20 text-destructive'}`}
-                          onClick={() => router.push(`/tasks/${dep.id}`)}>
-                          <p className="text-[10px] font-black truncate">{dep.title}</p>
-                          <div className={`absolute -right-1 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full ${dep.status === 'done' ? 'bg-green-500' : 'bg-destructive'} border border-background shadow-[0_0_8px_currentColor]`} />
-                        </div>
-                      )) : (
-                        <div className="py-8 border border-dashed border-primary/10 rounded-xl text-center">
-                          <p className="text-[9px] font-bold opacity-30 italic">No Ancestors</p>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Center Node: Current Task */}
-                    <div className="z-20 w-1/3 flex flex-col items-center">
-                      <div className={`p-5 rounded-[2rem] shadow-2xl ring-8 transition-all duration-500 ${isTaskBlocked ? 'bg-destructive ring-destructive/10' : 'bg-primary ring-primary/10'} text-white text-center w-full max-w-[160px] relative`}>
-                        <Zap className="h-4 w-4 absolute -top-2 -right-2 text-yellow-400 drop-shadow-lg" />
-                        <p className="text-[10px] font-black uppercase tracking-widest line-clamp-2">THIS TASK</p>
-                        <div className={`mt-2 h-1 rounded-full bg-white/30 overflow-hidden`}>
-                          <div className="h-full bg-white transition-all duration-1000" style={{ width: `${task.status === 'done' ? 100 : task.status === 'in-progress' ? 50 : 10}%` }} />
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Dependents Column */}
-                    <div className="flex flex-col gap-8 z-10 w-1/3">
-                      <p className="text-[8px] font-black text-muted-foreground/40 uppercase tracking-[0.2em] mb-2 text-center">Unlocks</p>
-                      {dependents.length > 0 ? dependents.map(dep => (
-                        <div key={dep.id}
-                          className={`p-3 rounded-xl border-2 transition-all hover:scale-105 cursor-pointer relative ${areDependentsUnlocked ? 'bg-primary/10 border-primary/20 text-primary' : 'bg-muted/10 border-muted/20 text-muted-foreground opacity-60'}`}
-                          onClick={() => router.push(`/tasks/${dep.id}`)}>
-                          <p className="text-[10px] font-black truncate">{dep.title}</p>
-                          <div className={`absolute -left-1 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full ${areDependentsUnlocked ? 'bg-primary' : 'bg-muted-foreground/40'} border border-background shadow-[0_0_8px_currentColor]`} />
-                        </div>
-                      )) : (
-                        <div className="py-8 border border-dashed border-primary/10 rounded-xl text-center">
-                          <p className="text-[9px] font-bold opacity-30 italic">No Dependents</p>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Connection Lines (Static SVG approximation for robustness) */}
-                    <svg className="absolute inset-0 w-full h-full pointer-events-none stroke-current opacity-20" style={{ color: 'hsl(var(--primary))' }}>
-                      <defs>
-                        <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="0" refY="3.5" orient="auto">
-                          <polygon points="0 0, 10 3.5, 0 7" fill="currentColor" />
-                        </marker>
-                      </defs>
-                      {/* Left connects to Center (simplified visual only) */}
-                      {dependencies.length > 0 && <path d="M 33% 150 L 50% 150" fill="none" strokeWidth="1" strokeDasharray="5,3" />}
-                      {/* Center connects to Right (simplified visual only) */}
-                      {dependents.length > 0 && <path d="M 50% 150 L 66% 150" fill="none" strokeWidth="1" strokeDasharray="5,3" />}
-                    </svg>
-                  </CardContent>
-
-                  {/* Footer Context */}
-                  <div className="p-4 bg-primary/5 text-center">
-                    <p className="text-[8px] font-bold text-muted-foreground/60 tracking-widest uppercase">
-                      {isTaskBlocked ? 'Current Objective is Stalled by Pre-requisites' : areDependentsUnlocked ? 'Objective Completed - Critical Path Unlocked' : 'Operational Independence Achieved'}
-                    </p>
-                  </div>
-                </Card>
-
                 {/* Tags Metadata */}
                 {task.tags && task.tags.length > 0 && (
                   <div className="space-y-3 px-2">
@@ -1796,6 +2329,7 @@ function TaskDetailPageContent() {
                 setEditingEntryId(null);
                 setPendingManualEntry(null);
                 setSessionSummary('');
+                setSessionScore(0);
               }
             }}
           >
@@ -1845,6 +2379,36 @@ function TaskDetailPageContent() {
                       <div className="flex items-center px-4 h-12 rounded-xl bg-muted/10 border border-primary/5 text-[10px] font-black uppercase tracking-widest text-muted-foreground truncate">
                         {pendingManualEntry ? 'Manual Mode' : 'Live Relay'}
                       </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/60">Productivity Rating (Optional)</Label>
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        { score: 1, label: 'Distracted' },
+                        { score: 2, label: 'Slow' },
+                        { score: 3, label: 'Steady' },
+                        { score: 4, label: 'Sharp' },
+                        { score: 5, label: 'Flow' }
+                      ].map(rating => (
+                        <Button
+                          key={rating.score}
+                          type="button"
+                          variant="outline"
+                          onClick={() => setSessionScore(sessionScore === rating.score ? 0 : rating.score)}
+                          className={`flex-1 h-14 rounded-xl transition-all ${sessionScore === rating.score ? 'bg-amber-500/10 border-amber-500 text-amber-500 shadow-sm' : 'border-primary/10 hover:border-amber-500/30 hover:bg-amber-500/5'}`}
+                        >
+                          <div className="flex flex-col items-center gap-1">
+                            <div className="flex items-center gap-0.5">
+                              {Array.from({ length: 5 }).map((_, i) => (
+                                <Star key={i} className={`h-3 w-3 ${i < rating.score ? (sessionScore === rating.score ? 'fill-amber-500 text-amber-500' : 'fill-current opacity-60') : 'text-muted-foreground/20'}`} />
+                              ))}
+                            </div>
+                            <span className="text-[8px] font-black uppercase tracking-widest opacity-80">{rating.label}</span>
+                          </div>
+                        </Button>
+                      ))}
                     </div>
                   </div>
 
