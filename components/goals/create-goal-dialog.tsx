@@ -18,7 +18,7 @@ import { Slider } from '@/components/ui/slider';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Plus, Trash2 } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { ProjectSelector } from '@/components/projects/project-selector';
+import { ProjectMultiSelector } from '@/components/goals/project-multi-selector';
 import { Milestone } from '@/types';
 
 interface CreateGoalDialogProps {
@@ -36,7 +36,7 @@ export function CreateGoalDialog({ children, projectId }: CreateGoalDialogProps)
         progress: 0,
         milestones: [] as Milestone[],
         newMilestone: '',
-        projectId: projectId as string | undefined,
+        projectIds: projectId ? [projectId] : ([] as string[]),
     });
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -48,7 +48,8 @@ export function CreateGoalDialog({ children, projectId }: CreateGoalDialogProps)
             targetDate: formData.targetDate ? new Date(formData.targetDate) : undefined,
             progress: formData.progress,
             milestones: formData.milestones,
-            projectId: formData.projectId || undefined,
+            projectId: formData.projectIds[0] || undefined,
+            projectIds: formData.projectIds,
             createdAt: new Date(),
             updatedAt: new Date(),
         });
@@ -60,7 +61,7 @@ export function CreateGoalDialog({ children, projectId }: CreateGoalDialogProps)
             progress: 0,
             milestones: [],
             newMilestone: '',
-            projectId,
+            projectIds: projectId ? [projectId] : [],
         });
         setOpen(false);
     };
@@ -154,12 +155,12 @@ export function CreateGoalDialog({ children, projectId }: CreateGoalDialogProps)
                                         className="bg-muted/30 rounded-xl h-11 border-primary/5 font-bold"
                                     />
                                 </div>
-                                <div className="space-y-3">
-                                    <Label htmlFor="projectId" className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/60">Project Workspace</Label>
-                                    <ProjectSelector
-                                        value={formData.projectId}
-                                        onChange={(value) => setFormData({ ...formData, projectId: value })}
-                                        placeholder="Personal Growth"
+                                <div className="space-y-3 sm:col-span-2">
+                                <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/60">Project Workspaces</Label>
+                                    <ProjectMultiSelector
+                                        value={formData.projectIds}
+                                        onChange={(value) => setFormData({ ...formData, projectIds: value })}
+                                        placeholder="Select one or more projects"
                                     />
                                 </div>
                             </div>

@@ -32,6 +32,7 @@ import { cn } from '@/lib/utils';
 import type { Task, TaskStatus, TaskPriority } from '@/types';
 import { ProtectedRoute } from '@/components/protected-route';
 import { DataLoader } from '@/components/data-loader';
+import { goalMatchesProject, isPersonalGoal } from '@/lib/goal-projects';
 import { TaskTimeline } from '@/components/task-timeline';
 import { TaskGanttTimeline } from '@/components/task-gantt-timeline';
 import { ProjectSelector } from '@/components/projects/project-selector';
@@ -745,8 +746,10 @@ function TasksPageContent() {
                     const referencedGoalIds = new Set(currentTasks.map(t => t.goalId).filter(Boolean));
                     return goals.filter(g => {
                       if (selectedProjectId === null) return true;
-                      if (selectedProjectId === 'personal') return !g.projectId || referencedGoalIds.has(String(g.id));
-                      return String(g.projectId) === String(selectedProjectId) || !g.projectId || referencedGoalIds.has(String(g.id));
+                      if (selectedProjectId === 'personal') {
+                        return isPersonalGoal(g) || referencedGoalIds.has(String(g.id));
+                      }
+                      return goalMatchesProject(g, String(selectedProjectId)) || isPersonalGoal(g) || referencedGoalIds.has(String(g.id));
                     });
                   })()}
                   timeEntries={timeEntries.filter(e => {

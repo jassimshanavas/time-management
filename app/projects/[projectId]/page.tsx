@@ -47,6 +47,7 @@ import Link from 'next/link';
 import { MainLayout } from '@/components/layout/main-layout';
 import { ProtectedRoute } from '@/components/protected-route';
 import { DataLoader } from '@/components/data-loader';
+import { goalMatchesProject, isPersonalGoal } from '@/lib/goal-projects';
 import { cn } from '@/lib/utils';
 
 export default function ProjectPage() {
@@ -156,7 +157,7 @@ export default function ProjectPage() {
     );
 
     const projectGoals = goals.filter(g =>
-        String(g.projectId) === String(projectId) &&
+        goalMatchesProject(g, String(projectId)) &&
         (g.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
             g.description?.toLowerCase().includes(searchQuery.toLowerCase()))
     );
@@ -626,8 +627,8 @@ export default function ProjectPage() {
                                                     {(() => {
                                                         const referencedGoalIds = new Set(filteredProjectTasks.map(t => t.goalId).filter(Boolean));
                                                         const timelineGoals = goals.filter(g =>
-                                                            String(g.projectId) === String(projectId) ||
-                                                            !g.projectId ||
+                                                            goalMatchesProject(g, String(projectId)) ||
+                                                            isPersonalGoal(g) ||
                                                             referencedGoalIds.has(String(g.id))
                                                         );
                                                         return (

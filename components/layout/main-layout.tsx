@@ -2,13 +2,13 @@
 
 import { useState, useEffect } from 'react';
 import { Sidebar } from './sidebar';
-import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Menu } from 'lucide-react';
 import { DndProviderWrapper } from '@/components/providers/dnd-provider';
 import { ThemeProvider } from '@/components/providers/theme-provider';
 import { CommandPalette } from '@/components/command-palette';
 import { WorkspaceSwitcher } from './workspace-switcher';
+import { GlobalTimerDock } from '@/components/time-tracking/global-timer-dock';
 
 
 interface MainLayoutProps {
@@ -17,19 +17,18 @@ interface MainLayoutProps {
 
 export function MainLayout({ children }: MainLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [isCollapsed, setIsCollapsed] = useState(false);
-
-  // Load collapse state from localStorage on mount
-  useEffect(() => {
-    const savedState = localStorage.getItem('sidebar-collapsed');
-    if (savedState !== null) {
-      setIsCollapsed(JSON.parse(savedState));
+  const [isCollapsed, setIsCollapsed] = useState(() => {
+    if (typeof window === 'undefined') {
+      return false;
     }
-  }, []);
+
+    const savedState = window.localStorage.getItem('sidebar-collapsed');
+    return savedState !== null ? JSON.parse(savedState) : false;
+  });
 
   // Save collapse state to localStorage when it changes
   useEffect(() => {
-    localStorage.setItem('sidebar-collapsed', JSON.stringify(isCollapsed));
+    window.localStorage.setItem('sidebar-collapsed', JSON.stringify(isCollapsed));
   }, [isCollapsed]);
 
   return (
@@ -81,6 +80,7 @@ export function MainLayout({ children }: MainLayoutProps) {
           </div>
         </div>
         <CommandPalette />
+        <GlobalTimerDock />
       </DndProviderWrapper>
     </ThemeProvider>
   );

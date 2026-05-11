@@ -27,8 +27,8 @@ import { format } from 'date-fns';
 import type { Goal, Milestone } from '@/types';
 import { ProtectedRoute } from '@/components/protected-route';
 import { DataLoader } from '@/components/data-loader';
-import { ProjectSelector } from '@/components/projects/project-selector';
-import { ProjectBadge } from '@/components/projects/project-badge';
+import { ProjectMultiSelector } from '@/components/goals/project-multi-selector';
+import { getGoalProjectIds, goalMatchesProject, isPersonalGoal } from '@/lib/goal-projects';
 
 export default function GoalsPage() {
   const { goals, addGoal, updateGoal, deleteGoal, selectedProjectId, projects } = useStore();
@@ -41,7 +41,7 @@ export default function GoalsPage() {
     progress: 0,
     milestones: [] as Milestone[],
     newMilestone: '',
-    projectId: '' as string | undefined,
+    projectIds: [] as string[],
   });
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -54,7 +54,8 @@ export default function GoalsPage() {
         targetDate: formData.targetDate ? new Date(formData.targetDate) : undefined,
         progress: formData.progress,
         milestones: formData.milestones,
-        projectId: formData.projectId || undefined,
+        projectId: formData.projectIds[0] || undefined,
+        projectIds: formData.projectIds,
       });
     } else {
       const newGoal: Omit<Goal, 'id'> = {
@@ -63,7 +64,8 @@ export default function GoalsPage() {
         targetDate: formData.targetDate ? new Date(formData.targetDate) : undefined,
         progress: formData.progress,
         milestones: formData.milestones,
-        projectId: formData.projectId || undefined,
+        projectId: formData.projectIds[0] || undefined,
+        projectIds: formData.projectIds,
         createdAt: new Date(),
         updatedAt: new Date(),
       };
@@ -77,7 +79,7 @@ export default function GoalsPage() {
       progress: 0,
       milestones: [],
       newMilestone: '',
-      projectId: '',
+      projectIds: [],
     });
     setEditingGoal(null);
     setIsDialogOpen(false);
@@ -92,7 +94,7 @@ export default function GoalsPage() {
       progress: goal.progress,
       milestones: goal.milestones,
       newMilestone: '',
-      projectId: goal.projectId || '',
+      projectIds: getGoalProjectIds(goal),
     });
     setIsDialogOpen(true);
   };
@@ -152,9 +154,9 @@ export default function GoalsPage() {
   const filteredGoals = goals.filter((goal) => {
     if (selectedProjectId !== null) {
       if (selectedProjectId === 'personal') {
-        if (goal.projectId) return false;
+        if (!isPersonalGoal(goal)) return false;
       } else {
-        if (goal.projectId !== selectedProjectId) return false;
+        if (!goalMatchesProject(goal, selectedProjectId)) return false;
       }
     }
     return true;
@@ -189,14 +191,14 @@ export default function GoalsPage() {
                     <Button
                       onClick={() => {
                         setEditingGoal(null);
-                        setFormData({
+                          setFormData({
                           title: '',
                           description: '',
                           targetDate: '',
                           progress: 0,
                           milestones: [],
                           newMilestone: '',
-                          projectId: '',
+                          projectIds: [],
                         });
                       }}
                       className="h-10 px-6 rounded-2xl font-black text-xs shadow-lg shadow-primary/20 flex-1 sm:flex-initial"
@@ -249,12 +251,12 @@ export default function GoalsPage() {
                                 className="bg-muted/30 rounded-xl h-11 border-primary/5 font-bold"
                               />
                             </div>
-                            <div className="space-y-3">
-                              <Label htmlFor="projectId" className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/60">Project Workspace</Label>
-                              <ProjectSelector
-                                value={formData.projectId}
-                                onChange={(value) => setFormData({ ...formData, projectId: value })}
-                                placeholder="Personal Growth"
+                            <div className="space-y-3 sm:col-span-2">
+                              <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/60">Project Workspaces</Label>
+                              <ProjectMultiSelector
+                                value={formData.projectIds}
+                                onChange={(value) => setFormData({ ...formData, projectIds: value })}
+                                placeholder="Select one or more projects"
                               />
                             </div>
                           </div>
@@ -352,11 +354,21 @@ export default function GoalsPage() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-2">
                             <Badge variant="outline" className="text-[8px] font-black uppercase tracking-widest bg-primary/5 border-transparent h-4 px-1">{goal.milestones.length} Milestones</Badge>
-                            {goal.projectId && (
-                              <Badge variant="outline" className="text-[8px] font-black uppercase tracking-widest h-4 px-1" style={{ borderColor: `${projects.find(p => p.id === goal.projectId)?.color}30`, color: projects.find(p => p.id === goal.projectId)?.color }}>
-                                {projects.find(p => p.id === goal.projectId)?.name}
-                              </Badge>
-                            )}
+                            {getGoalProjectIds(goal).map((projectId) => {
+                              const project = projects.find((p) => p.id === projectId);
+                              if (!project) return null;
+
+                              return (
+                                <Badge
+                                  key={projectId}
+                                  variant="outline"
+                                  className="text-[8px] font-black uppercase tracking-widest h-4 px-1"
+                                  style={{ borderColor: `${project.color}30`, color: project.color }}
+                                >
+                                  {project.name}
+                                </Badge>
+                              );
+                            })}
                           </div>
                           <CardTitle className="text-xl lg:text-2xl font-black tracking-tight leading-tight group-hover:text-primary transition-colors italic">{goal.title}</CardTitle>
                           {goal.description && (

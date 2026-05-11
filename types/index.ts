@@ -113,6 +113,7 @@ export interface Goal {
   milestones: Milestone[];
   kanbanTasks?: KanbanTypes.Task[]; // Add Kanban tasks to the Goal interface
   projectId?: string; // Optional: Link goal to a project
+  projectIds?: string[]; // Optional: Link goal to multiple projects
   createdAt: Date;
   updatedAt: Date;
 }
