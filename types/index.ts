@@ -137,6 +137,18 @@ export interface Habit {
   createdAt: Date;
 }
 
+export interface LiveUpdateNode {
+  id: string;
+  text: string;
+  timestamp: Date;
+  elapsedTime: string;
+  parentId?: string;
+  indent?: number;
+  completed?: boolean;
+  phase?: string;
+  type: 'note' | 'todo';
+}
+
 export interface TimeEntry {
   id: string;
   category: string;
@@ -149,6 +161,7 @@ export interface TimeEntry {
   isRunning: boolean;
   notes?: string;
   productivityScore?: number; // 1-5
+  liveUpdates?: LiveUpdateNode[];
 }
 
 export interface SleepEntry {

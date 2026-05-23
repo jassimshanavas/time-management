@@ -75,7 +75,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Calendar as CalendarPicker } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 import { useStore } from '@/lib/store';
-import type { Task, TimeEntry } from '@/types';
+import type { Task, TimeEntry, LiveUpdateNode } from '@/types';
 
 const getElapsedTime = (startTime: Date, currentTime: Date) => {
   const elapsed = Math.max(
@@ -121,6 +121,144 @@ const toLocalDateTimeInputValue = (date: Date) => {
   const hours = `${date.getHours()}`.padStart(2, '0');
   const minutes = `${date.getMinutes()}`.padStart(2, '0');
   return `${year}-${month}-${day}T${hours}:${minutes}`;
+};
+
+const MarkdownNotesRenderer = ({ notes }: { notes: string }) => {
+  if (!notes) return null;
+
+  const hasMarkdown = notes.includes('###') || notes.includes('**') || notes.includes('- ') || notes.includes('- [');
+  if (!hasMarkdown) {
+    return (
+      <p className="whitespace-pre-wrap text-[11px] font-medium italic leading-relaxed text-foreground/80">
+        {notes}
+      </p>
+    );
+  }
+
+  const lines = notes.split('\n');
+
+  return (
+    <div className="space-y-2 text-start select-text cursor-text">
+      {lines.map((line, index) => {
+        const trimmed = line.trim();
+        if (!trimmed) return <div key={index} className="h-1" />;
+
+        const leadingSpaces = line.match(/^\s*/)?.[0].length || 0;
+        const indentLevel = Math.floor(leadingSpaces / 2);
+        const paddingLeft = indentLevel > 0 ? `${indentLevel * 1.25}rem` : '0px';
+
+        if (trimmed.startsWith('###')) {
+          const text = trimmed.replace(/^###\s*/, '');
+          return (
+            <h4
+              key={index}
+              style={{ paddingLeft }}
+              className="text-[10px] font-black uppercase tracking-[0.2em] text-primary mt-4 mb-2 flex items-center gap-1.5"
+            >
+              <Sparkles className="h-3.5 w-3.5 text-primary animate-pulse" />
+              {text}
+            </h4>
+          );
+        }
+
+        if (trimmed.startsWith('**') && trimmed.endsWith('**:')) {
+          const text = trimmed.replace(/^\*\*\s*/, '').replace(/\s*\*\*:\s*$/, '');
+          const phaseColors: Record<string, string> = {
+            'Deep Work': 'bg-purple-500/10 text-purple-500 border-purple-500/20',
+            'Planning': 'bg-cyan-500/10 text-cyan-500 border-cyan-500/20',
+            'Coding': 'bg-indigo-500/10 text-indigo-500 border-indigo-500/20',
+            'Debugging': 'bg-orange-500/10 text-orange-500 border-orange-500/20',
+            'Break': 'bg-amber-500/10 text-amber-500 border-amber-500/20'
+          };
+          const badgeStyle = phaseColors[text] || 'bg-muted/30 text-muted-foreground/80';
+
+          return (
+            <div key={index} style={{ paddingLeft }} className="mt-3 block">
+              <Badge variant="outline" className={cn("h-5 text-[8px] font-black uppercase tracking-widest px-2.5 border-current bg-background/50", badgeStyle)}>
+                {text}
+              </Badge>
+            </div>
+          );
+        }
+
+        const todoMatch = trimmed.match(/^-\s*\[\s*([ xX])\s*\]\s*(.*)/);
+        if (todoMatch) {
+          const isDone = todoMatch[1].toLowerCase() === 'x';
+          const rest = todoMatch[2].trim();
+
+          const timeBadgeMatch = rest.match(/^`\[([\d:]+)\]`\s*(.*)/) || rest.match(/^\[([\d:]+)\]\s*(.*)/);
+          const timeBadge = timeBadgeMatch ? timeBadgeMatch[1] : null;
+          const content = timeBadgeMatch ? timeBadgeMatch[2] : rest;
+
+          return (
+            <div
+              key={index}
+              style={{ paddingLeft: `calc(${paddingLeft} + 0.5rem)` }}
+              className={cn(
+                "flex items-start gap-2.5 py-0.5 text-[11px] font-semibold leading-relaxed text-foreground/85",
+                isDone && "line-through text-muted-foreground/50 italic"
+              )}
+            >
+              <div
+                className={cn(
+                  "mt-0.5 h-3.5 w-3.5 rounded border transition-colors flex items-center justify-center shrink-0",
+                  isDone
+                    ? "bg-primary border-primary text-primary-foreground"
+                    : "border-primary/30 bg-background"
+                )}
+              >
+                {isDone && <CheckCircle2 className="h-2.5 w-2.5 stroke-[3]" />}
+              </div>
+              <div className="min-w-0">
+                {timeBadge && (
+                  <Badge variant="outline" className="h-4 border-primary/10 bg-muted/20 text-[8px] font-black text-primary/65 mr-1.5 px-1.5 py-0 tabular-nums">
+                    {timeBadge}
+                  </Badge>
+                )}
+                {content}
+              </div>
+            </div>
+          );
+        }
+
+        if (trimmed.startsWith('-')) {
+          const rest = trimmed.replace(/^-\s*/, '').trim();
+
+          const timeBadgeMatch = rest.match(/^`\[([\d:]+)\]`\s*(.*)/) || rest.match(/^\[([\d:]+)\]\s*(.*)/);
+          const timeBadge = timeBadgeMatch ? timeBadgeMatch[1] : null;
+          const content = timeBadgeMatch ? timeBadgeMatch[2] : rest;
+
+          return (
+            <div
+              key={index}
+              style={{ paddingLeft: `calc(${paddingLeft} + 0.5rem)` }}
+              className="flex items-start gap-2.5 py-0.5 text-[11px] font-semibold leading-relaxed text-foreground/85"
+            >
+              <div className="mt-2 h-1.5 w-1.5 rounded-full bg-primary/45 shrink-0" />
+              <div className="min-w-0">
+                {timeBadge && (
+                  <Badge variant="outline" className="h-4 border-primary/10 bg-muted/20 text-[8px] font-black text-primary/65 mr-1.5 px-1.5 py-0 tabular-nums">
+                    {timeBadge}
+                  </Badge>
+                )}
+                {content}
+              </div>
+            </div>
+          );
+        }
+
+        return (
+          <p
+            key={index}
+            style={{ paddingLeft }}
+            className="text-[11px] font-semibold leading-relaxed text-foreground/75"
+          >
+            {line}
+          </p>
+        );
+      })}
+    </div>
+  );
 };
 
 export default function TimeTrackingPage() {
@@ -177,6 +315,104 @@ export default function TimeTrackingPage() {
   });
   const timelineRef = useRef<HTMLDivElement | null>(null);
   const captureAreaRef = useRef<HTMLDivElement | null>(null);
+
+  // Chronos Journal State Dictionaries (keyed by TimeEntry ID for multi-timer support)
+  const [activePhases, setActivePhases] = useState<Record<string, string>>({});
+  const [inputTexts, setInputTexts] = useState<Record<string, string>>({});
+  const [isTodoMode, setIsTodoMode] = useState<Record<string, boolean>>({});
+  const [indentLevels, setIndentLevels] = useState<Record<string, number>>({});
+  const [expandedJournals, setExpandedJournals] = useState<Record<string, boolean>>({});
+
+  const handleAddLiveUpdate = async (entryId: string) => {
+    const text = inputTexts[entryId]?.trim();
+    if (!text) return;
+
+    const entry = timeEntries.find((e) => e.id === entryId);
+    if (!entry) return;
+
+    const currentUpdates = entry.liveUpdates || [];
+    const phase = activePhases[entryId] || 'Deep Work';
+    const type = isTodoMode[entryId] ? 'todo' : 'note';
+    const indent = indentLevels[entryId] || 0;
+
+    let parentId: string | undefined = undefined;
+    if (indent > 0) {
+      for (let i = currentUpdates.length - 1; i >= 0; i--) {
+        const node = currentUpdates[i];
+        const nodeIndent = node.indent || 0;
+        if (nodeIndent < indent) {
+          parentId = node.id;
+          break;
+        }
+      }
+    }
+
+    const newNode: LiveUpdateNode = {
+      id: `update-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      text,
+      timestamp: new Date(),
+      elapsedTime: getElapsedTime(entry.startTime, currentTime),
+      parentId,
+      indent,
+      completed: type === 'todo' ? false : undefined,
+      phase,
+      type,
+    };
+
+    const nextUpdates = [...currentUpdates, newNode];
+    await updateTimeEntry(entryId, { liveUpdates: nextUpdates });
+
+    setInputTexts((prev) => ({ ...prev, [entryId]: '' }));
+    setIndentLevels((prev) => ({ ...prev, [entryId]: 0 }));
+  };
+
+  const handleToggleUpdateCompletion = async (entryId: string, nodeId: string) => {
+    const entry = timeEntries.find((e) => e.id === entryId);
+    if (!entry || !entry.liveUpdates) return;
+
+    const nextUpdates = entry.liveUpdates.map((node) => {
+      if (node.id === nodeId) {
+        return { ...node, completed: !node.completed };
+      }
+      return node;
+    });
+
+    await updateTimeEntry(entryId, { liveUpdates: nextUpdates });
+  };
+
+  const handleDeleteLiveUpdate = async (entryId: string, nodeId: string) => {
+    const entry = timeEntries.find((e) => e.id === entryId);
+    if (!entry || !entry.liveUpdates) return;
+
+    const nodesToKeep = entry.liveUpdates.filter(
+      (node) => node.id !== nodeId && node.parentId !== nodeId
+    );
+
+    await updateTimeEntry(entryId, { liveUpdates: nodesToKeep });
+  };
+
+  const compileUpdatesToMarkdown = (updates: LiveUpdateNode[]) => {
+    const phases: Record<string, LiveUpdateNode[]> = {};
+    updates.forEach((node) => {
+      const phase = node.phase || 'General Work';
+      if (!phases[phase]) {
+        phases[phase] = [];
+      }
+      phases[phase].push(node);
+    });
+
+    let markdown = '### Chronos Session Log\n';
+    Object.entries(phases).forEach(([phaseName, nodes]) => {
+      markdown += `\n**${phaseName}**:\n`;
+      nodes.forEach((node) => {
+        const indentSpaces = '  '.repeat(node.indent || 0);
+        const badge = `\`[${node.elapsedTime}]\``;
+        const bullet = node.type === 'todo' ? (node.completed ? '- [x]' : '- [ ]') : '-';
+        markdown += `${indentSpaces}${bullet} ${badge} ${node.text}\n`;
+      });
+    });
+    return markdown;
+  };
 
   useEffect(() => {
     const timerId = window.setInterval(() => setCurrentTime(new Date()), 1000);
@@ -244,7 +480,15 @@ export default function TimeTrackingPage() {
     const entry = timeEntries.find((item) => item.id === id);
     setEditingEntryId(null);
     setStoppingEntryId(id);
-    setSessionSummary(entry?.notes || '');
+
+    // Auto-compile live updates to markdown notes if present
+    let finalNotes = entry?.notes || '';
+    if (entry?.liveUpdates && entry.liveUpdates.length > 0) {
+      const compiledMarkdown = compileUpdatesToMarkdown(entry.liveUpdates);
+      finalNotes = finalNotes ? `${finalNotes}\n\n${compiledMarkdown}` : compiledMarkdown;
+    }
+
+    setSessionSummary(finalNotes);
     setSessionCategory(entry?.category || '');
     setSessionProjectId(entry?.projectId || '');
     setSessionTaskId(entry?.taskId || '');
@@ -1046,6 +1290,268 @@ export default function TimeTrackingPage() {
                               </Button>
                             </div>
                           </div>
+
+                          {/* Chronos Journal Live Logging Panel */}
+                          <div className="mt-6 border-t border-primary/10 pt-6">
+                            <div className="flex items-center justify-between mb-4">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setExpandedJournals((prev) => ({
+                                    ...prev,
+                                    [entry.id]: !prev[entry.id],
+                                  }))
+                                }
+                                className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-primary hover:text-primary/80 transition-colors"
+                              >
+                                <Sparkles className={cn("h-4 w-4 text-primary", (expandedJournals[entry.id] ?? true) && "animate-pulse")} />
+                                Chronos Journal
+                                <Badge variant="outline" className="h-5 border-primary/20 bg-primary/5 text-[9px] px-1.5 py-0">
+                                  {entry.liveUpdates?.length || 0} logs
+                                </Badge>
+                              </button>
+                              
+                              <div className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">
+                                Active Phase: <span className="text-primary italic">{activePhases[entry.id] || 'Deep Work'}</span>
+                              </div>
+                            </div>
+
+                            {(expandedJournals[entry.id] ?? true) && (
+                              <div className="space-y-6 animate-in fade-in slide-in-from-top-2 duration-300">
+                                
+                                {/* 1. Phase Shift Console */}
+                                <div className="flex flex-wrap items-center gap-1.5 p-1 rounded-2xl bg-muted/20 border border-primary/5">
+                                  {[
+                                    { label: 'Deep Work', color: 'bg-purple-500/10 text-purple-500 border-purple-500/20' },
+                                    { label: 'Planning', color: 'bg-cyan-500/10 text-cyan-500 border-cyan-500/20' },
+                                    { label: 'Coding', color: 'bg-indigo-500/10 text-indigo-500 border-indigo-500/20' },
+                                    { label: 'Debugging', color: 'bg-orange-500/10 text-orange-500 border-orange-500/20' },
+                                    { label: 'Break', color: 'bg-amber-500/10 text-amber-500 border-amber-500/20' }
+                                  ].map((p) => {
+                                    const isActive = (activePhases[entry.id] || 'Deep Work') === p.label;
+                                    return (
+                                      <button
+                                        key={p.label}
+                                        type="button"
+                                        onClick={() =>
+                                          setActivePhases((prev) => ({
+                                            ...prev,
+                                            [entry.id]: p.label,
+                                          }))
+                                        }
+                                        className={cn(
+                                          "flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-[9px] font-black uppercase tracking-wider transition-all",
+                                          isActive
+                                            ? `${p.color} border-current scale-[1.03] shadow-sm`
+                                            : "border-transparent bg-transparent text-muted-foreground/60 hover:text-muted-foreground hover:bg-muted/40"
+                                        )}
+                                      >
+                                        <span className={cn("h-1.5 w-1.5 rounded-full", isActive ? "bg-current animate-ping" : "bg-muted-foreground/35")} />
+                                        {p.label}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+
+                                {/* 2. Active Outliner Prompt */}
+                                <div className="flex items-center gap-2">
+                                  <div className="relative flex-1">
+                                    <Input
+                                      value={inputTexts[entry.id] || ''}
+                                      onChange={(e) =>
+                                        setInputTexts((prev) => ({
+                                          ...prev,
+                                          [entry.id]: e.target.value,
+                                        }))
+                                      }
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                          e.preventDefault();
+                                          handleAddLiveUpdate(entry.id);
+                                        } else if (e.key === 'Tab') {
+                                          e.preventDefault();
+                                          if (e.shiftKey) {
+                                            // Outdent
+                                            setIndentLevels((prev) => ({
+                                              ...prev,
+                                              [entry.id]: Math.max(0, (prev[entry.id] || 0) - 1),
+                                            }));
+                                          } else {
+                                            // Indent
+                                            setIndentLevels((prev) => ({
+                                              ...prev,
+                                              [entry.id]: Math.min(2, (prev[entry.id] || 0) + 1),
+                                            }));
+                                          }
+                                        }
+                                      }}
+                                      placeholder="Log node... (Tab to indent, Enter to save)"
+                                      className="h-10 pr-24 rounded-xl border-primary/10 bg-background/60 text-xs font-medium placeholder:text-muted-foreground/45"
+                                    />
+                                    
+                                    {/* Indentation Level Indicator Badge */}
+                                    <div className="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                                      <Badge variant="outline" className="h-5 border-primary/10 bg-muted/30 text-[8px] font-black uppercase">
+                                        {(indentLevels[entry.id] || 0) === 0 ? 'Root' : `Indent ${(indentLevels[entry.id] || 0)}`}
+                                      </Badge>
+                                    </div>
+                                  </div>
+
+                                  {/* Prompt Action Toolbar */}
+                                  <div className="flex items-center gap-1 bg-muted/20 border border-primary/5 rounded-xl p-0.5">
+                                    <Button
+                                      size="icon"
+                                      variant="ghost"
+                                      onClick={() =>
+                                        setIndentLevels((prev) => ({
+                                          ...prev,
+                                          [entry.id]: Math.max(0, (prev[entry.id] || 0) - 1),
+                                        }))
+                                      }
+                                      title="Outdent (Shift+Tab)"
+                                      className="h-9 w-9 rounded-lg text-muted-foreground/75 hover:bg-primary/5"
+                                    >
+                                      <ChevronLeft className="h-4 w-4" />
+                                    </Button>
+
+                                    <Button
+                                      size="icon"
+                                      variant="ghost"
+                                      onClick={() =>
+                                        setIndentLevels((prev) => ({
+                                          ...prev,
+                                          [entry.id]: Math.min(2, (prev[entry.id] || 0) + 1),
+                                        }))
+                                      }
+                                      title="Indent (Tab)"
+                                      className="h-9 w-9 rounded-lg text-muted-foreground/75 hover:bg-primary/5"
+                                    >
+                                      <ChevronRight className="h-4 w-4" />
+                                    </Button>
+
+                                    <Button
+                                      size="icon"
+                                      variant="ghost"
+                                      onClick={() =>
+                                        setIsTodoMode((prev) => ({
+                                          ...prev,
+                                          [entry.id]: !prev[entry.id],
+                                        }))
+                                      }
+                                      title="Toggle Task Checklist Node"
+                                      className={cn(
+                                        "h-9 w-9 rounded-lg transition-colors",
+                                        isTodoMode[entry.id]
+                                          ? "bg-primary/10 text-primary hover:bg-primary/20"
+                                          : "text-muted-foreground/75 hover:bg-primary/5"
+                                      )}
+                                    >
+                                      <CheckCircle2 className="h-4 w-4" />
+                                    </Button>
+
+                                    <Button
+                                      size="icon"
+                                      onClick={() => handleAddLiveUpdate(entry.id)}
+                                      className="h-9 w-9 rounded-lg bg-primary hover:bg-primary/95 text-primary-foreground shadow"
+                                    >
+                                      <Plus className="h-4 w-4" />
+                                    </Button>
+                                  </div>
+                                </div>
+
+                                {/* 3. Live Indented Milestone Tree */}
+                                {entry.liveUpdates && entry.liveUpdates.length > 0 ? (
+                                  <div className="relative border-l border-primary/10 ml-3 pl-4 py-2 space-y-4">
+                                    {entry.liveUpdates.map((node) => {
+                                      const isTodo = node.type === 'todo';
+                                      const isDone = node.completed === true;
+                                      
+                                      // Custom colors per phase to visually differentiate tree nodes
+                                      const phaseColors: Record<string, string> = {
+                                        'Deep Work': 'bg-purple-500/10 text-purple-500 border-purple-500/20',
+                                        'Planning': 'bg-cyan-500/10 text-cyan-500 border-cyan-500/20',
+                                        'Coding': 'bg-indigo-500/10 text-indigo-500 border-indigo-500/20',
+                                        'Debugging': 'bg-orange-500/10 text-orange-500 border-orange-500/20',
+                                        'Break': 'bg-amber-500/10 text-amber-500 border-amber-500/20'
+                                      };
+                                      const phaseColor = phaseColors[node.phase || ''] || 'bg-muted/30 text-muted-foreground/80';
+
+                                      return (
+                                        <div
+                                          key={node.id}
+                                          style={{
+                                            paddingLeft: `${(node.indent || 0) * 1.25}rem`,
+                                          }}
+                                          className="group relative flex items-start justify-between gap-4 py-1 transition-all"
+                                        >
+                                          {/* Visual Hierarchy Connector Line Indicator */}
+                                          {(node.indent || 0) > 0 && (
+                                            <div 
+                                              style={{ left: `${((node.indent || 0) - 1) * 1.25}rem` }}
+                                              className="absolute -top-3 bottom-1/2 w-4 border-l border-b border-primary/15 rounded-bl-lg animate-in fade-in" 
+                                            />
+                                          )}
+
+                                          <div className="flex items-start gap-2.5 min-w-0">
+                                            {isTodo ? (
+                                              <button
+                                                type="button"
+                                                onClick={() => handleToggleUpdateCompletion(entry.id, node.id)}
+                                                className={cn(
+                                                  "mt-0.5 h-4 w-4 rounded border transition-colors flex items-center justify-center shrink-0",
+                                                  isDone
+                                                    ? "bg-primary border-primary text-primary-foreground"
+                                                    : "border-primary/30 hover:border-primary/60 bg-background"
+                                                )}
+                                              >
+                                                {isDone && <CheckCircle2 className="h-3 w-3 stroke-[3]" />}
+                                              </button>
+                                            ) : (
+                                              <div className="mt-2 h-1.5 w-1.5 rounded-full bg-primary/45 shrink-0" />
+                                            )}
+
+                                            <div className="min-w-0">
+                                              <p className={cn(
+                                                "text-xs font-semibold leading-relaxed break-words text-foreground/85",
+                                                isDone && "line-through text-muted-foreground/50 italic"
+                                              )}>
+                                                {node.text}
+                                              </p>
+                                              
+                                              <div className="mt-1 flex flex-wrap items-center gap-2 text-[9px] font-black uppercase tracking-wider">
+                                                <span className="text-primary/50 tabular-nums">
+                                                  {node.elapsedTime}
+                                                </span>
+                                                <Badge variant="outline" className={cn("h-4 text-[7px] px-1 py-0 border-current font-bold uppercase", phaseColor)}>
+                                                  {node.phase}
+                                                </Badge>
+                                              </div>
+                                            </div>
+                                          </div>
+
+                                          <Button
+                                            size="icon"
+                                            variant="ghost"
+                                            onClick={() => handleDeleteLiveUpdate(entry.id, node.id)}
+                                            className="opacity-0 group-hover:opacity-100 h-6 w-6 rounded-md hover:bg-destructive/10 hover:text-destructive transition-all shrink-0"
+                                          >
+                                            <Trash2 className="h-3.5 w-3.5" />
+                                          </Button>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                ) : (
+                                  <div className="text-center py-6 rounded-2xl border border-dashed border-primary/10 bg-muted/5">
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/45">
+                                      Your logged milestones and micro-notes will appear here.
+                                    </p>
+                                  </div>
+                                )}
+
+                              </div>
+                            )}
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -1381,9 +1887,7 @@ export default function TimeTrackingPage() {
 
                             {entry.notes && (
                               <div className="mt-4 rounded-xl border border-primary/10 bg-primary/5 p-4">
-                                <p className="whitespace-pre-wrap text-[11px] font-medium italic leading-relaxed text-foreground/80">
-                                  {entry.notes}
-                                </p>
+                                <MarkdownNotesRenderer notes={entry.notes} />
                               </div>
                             )}
                           </div>
@@ -2243,7 +2747,11 @@ export default function TimeTrackingPage() {
                                       Live elapsed {getElapsedTime(new Date(entry.startTime), currentTime)}
                                     </p>
                                   )}
-                                  {entry.notes && <p className="text-[10px] italic text-primary/60 mt-2">{entry.notes}</p>}
+                                  {entry.notes && (
+                                    <div className="mt-2 text-start">
+                                      <MarkdownNotesRenderer notes={entry.notes} />
+                                    </div>
+                                  )}
                                 </div>
                                 <div className="flex items-center gap-2 no-capture">
                                   <Badge variant="secondary" className={`font-black ${entry.isRunning ? 'bg-primary text-primary-foreground' : ''}`}>

@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { AstraOrb } from "./astra-orb";
-import { getAstraResponseWithTools, buildRichContextString, type ChatMessage } from "@/lib/gemini";
+import { getAstraResponseWithTools, buildRichContextString, cleanTextForSpeech, type ChatMessage } from "@/lib/gemini";
 import { useStore } from "@/lib/store";
 import { useAuth } from "@/lib/auth-context";
 import type { ToolAction, AstraContext } from "@/lib/astra-tools";
@@ -61,6 +61,137 @@ function ToolActionCard({ action }: { action: ToolAction }) {
   );
 }
 
+function formatAstraMessage(content: string) {
+  if (!content) return null;
+
+  const lines = content.split("\n");
+  const parsedNodes: React.ReactNode[] = [];
+  
+  let currentTableLines: string[] = [];
+
+  const flushTable = (key: number) => {
+    if (currentTableLines.length === 0) return null;
+
+    const headerLine = currentTableLines[0];
+    const rowsLines = currentTableLines.slice(2); // Skip separator
+
+    // Parse header columns
+    const headers = headerLine.split('|').map(s => s.trim()).filter((_, idx, arr) => idx > 0 && idx < arr.length - 1);
+    
+    // Parse rows
+    const rows = rowsLines.map(rowLine => 
+      rowLine.split('|').map(s => s.trim()).filter((_, idx, arr) => idx > 0 && idx < arr.length - 1)
+    ).filter(row => row.length > 0);
+
+    currentTableLines = [];
+
+    return (
+      <div key={`table-${key}`} className="w-full my-3.5 overflow-x-auto rounded-xl border border-cyan-500/20 bg-black/60 backdrop-blur-md shadow-[0_0_25px_rgba(6,182,212,0.05)]">
+        <table className="w-full text-left border-collapse text-[11px] font-sans">
+          <thead>
+            <tr className="border-b border-cyan-500/30 bg-cyan-950/40">
+              {headers.map((h, i) => (
+                <th key={i} className="px-3 py-2 font-black uppercase tracking-wider text-cyan-400 font-mono text-[9px]">
+                  {parseInlineMarkdown(h)}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, rIdx) => (
+              <tr 
+                key={rIdx} 
+                className="border-b border-cyan-500/10 hover:bg-cyan-500/5 transition-colors duration-150 last:border-b-0"
+              >
+                {row.map((cell, cIdx) => (
+                  <td key={cIdx} className="px-3 py-2 text-cyan-100 font-light whitespace-normal max-w-[200px] break-words">
+                    {parseInlineMarkdown(cell)}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
+
+  // Helper to parse bold stars and slash commands inside table cells
+  const parseInlineMarkdown = (text: string) => {
+    const parts = text.split(/(\/[a-zA-Z0-9\-]+|\*\*[^*]+\*\*)/g);
+    return parts.map((part, idx) => {
+      if (part.startsWith("**") && part.endsWith("**")) {
+        return (
+          <strong 
+            key={idx} 
+            className="font-extrabold text-cyan-300 drop-shadow-[0_0_8px_rgba(6,182,212,0.35)]"
+          >
+            {part.slice(2, -2)}
+          </strong>
+        );
+      }
+      if (part.startsWith("/") && !part.includes(" ")) {
+        return (
+          <code 
+            key={idx} 
+            className="px-1.5 py-0.5 rounded bg-cyan-950/60 border border-cyan-500/20 text-cyan-400 font-mono text-[10px] mx-0.5"
+          >
+            {part}
+          </code>
+        );
+      }
+      return part;
+    });
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+
+    // Check if it is a table line
+    const isTableLine = line.startsWith('|') && line.endsWith('|');
+
+    if (isTableLine) {
+      currentTableLines.push(line);
+    } else {
+      // If we were parsing a table, flush it first
+      if (currentTableLines.length > 0) {
+        const tableNode = flushTable(i);
+        if (tableNode) parsedNodes.push(tableNode);
+      }
+
+      if (!line) {
+        parsedNodes.push(<div key={i} className="h-1" />);
+        continue;
+      }
+
+      // Check if it is a list item/bullet
+      const isBullet = line.startsWith("- ") || line.startsWith("* ");
+      let cleanLineText = isBullet ? line.slice(2) : line;
+
+      const parsedLine = parseInlineMarkdown(cleanLineText);
+
+      if (isBullet) {
+        parsedNodes.push(
+          <div key={i} className="flex items-start gap-2 pl-2">
+            <span className="text-cyan-400 mt-1 shrink-0 text-[10px] animate-pulse">⚡</span>
+            <span className="flex-1 text-[12px] leading-relaxed text-cyan-100">{parsedLine}</span>
+          </div>
+        );
+      } else {
+        parsedNodes.push(<p key={i} className="leading-relaxed text-[12px] text-cyan-100">{parsedLine}</p>);
+      }
+    }
+  }
+
+  // Flush any remaining table at the end of the lines loop
+  if (currentTableLines.length > 0) {
+    const tableNode = flushTable(lines.length);
+    if (tableNode) parsedNodes.push(tableNode);
+  }
+
+  return <div className="space-y-1.5 font-sans">{parsedNodes}</div>;
+}
+
 // ─── Message Bubble ───────────────────────────────────────────────────────────
 
 function MessageBubble({ msg }: { msg: Message }) {
@@ -106,7 +237,7 @@ function MessageBubble({ msg }: { msg: Message }) {
               />
             ))}
           </span>
-        ) : msg.content}
+        ) : formatAstraMessage(msg.content)}
       </div>
 
       <span className="text-[8px] text-cyan-500/30 font-mono uppercase tracking-widest px-1">
@@ -250,7 +381,8 @@ export function AstraAssistant() {
   const speak = (text: string) => {
     if (!voiceEnabled || !synth) return;
     synth.cancel();
-    const utt = new SpeechSynthesisUtterance(text.slice(0, 200));
+    const cleanText = cleanTextForSpeech(text);
+    const utt = new SpeechSynthesisUtterance(cleanText);
     const voices = synth.getVoices();
     const v = voices.find(v => v.name.includes("Google UK English Male") || v.name.includes("Arthur"));
     if (v) utt.voice = v;

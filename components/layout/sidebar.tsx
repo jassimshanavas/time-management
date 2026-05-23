@@ -30,6 +30,7 @@ import {
   Trophy,
   Sparkles,
   Layout,
+  Bot,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -394,6 +395,22 @@ export function Sidebar({ isCollapsed = false, onToggleCollapse, onMobileClose }
                 <Sparkles className={cn('h-5 w-5 text-purple-500', isCollapsed ? 'mr-0' : 'mr-3')} />
                 <span className={cn('transition-all overflow-hidden', isCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100')}>
                   Board
+                </span>
+              </Link>
+
+              <Link
+                href="/astra"
+                onClick={onMobileClose}
+                className={cn(
+                  'text-sm flex p-3 w-full font-bold cursor-pointer hover:bg-cyan-500/10 rounded-lg transition-all relative overflow-hidden group',
+                  pathname === '/astra' ? 'bg-cyan-500/15 text-cyan-400 border border-cyan-500/30' : 'text-muted-foreground hover:text-cyan-400',
+                  isCollapsed ? 'justify-center' : 'justify-start'
+                )}
+              >
+                <Bot className={cn('h-5 w-5 text-cyan-400 group-hover:scale-110 transition-transform', isCollapsed ? 'mr-0' : 'mr-3')} />
+                <span className={cn('transition-all overflow-hidden flex items-center gap-1.5', isCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100')}>
+                  Astra AI
+                  <span className="text-[8px] bg-cyan-500/20 text-cyan-300 px-1 py-0.5 rounded font-mono uppercase tracking-widest animate-pulse shrink-0">HUD</span>
                 </span>
               </Link>
 
