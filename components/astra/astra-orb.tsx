@@ -34,6 +34,7 @@ export function AstraOrb({ isListening, isSpeaking, isThinking, onClick, classNa
                 "relative group cursor-pointer",
                 className
             )}
+            suppressHydrationWarning={true}
         >
             {/* Outer Glow */}
             <motion.div
@@ -49,6 +50,7 @@ export function AstraOrb({ isListening, isSpeaking, isThinking, onClick, classNa
                     "absolute inset-0 rounded-full blur-xl",
                     isListening ? "bg-red-500/50" : "bg-cyan-500/50"
                 )}
+                suppressHydrationWarning={true}
             />
 
             {/* Main Orb */}
@@ -67,23 +69,29 @@ export function AstraOrb({ isListening, isSpeaking, isThinking, onClick, classNa
                     isListening ? "border-red-400 bg-red-950/30" : "border-cyan-400 bg-cyan-950/30",
                     "backdrop-blur-md"
                 )}
+                suppressHydrationWarning={true}
             >
                 {/* Internal Core */}
-                <div className={cn(
-                    "absolute w-8 h-8 rounded-full blur-sm",
-                    isListening ? "bg-red-400" : "bg-cyan-400"
-                )} />
+                <div 
+                    className={cn(
+                        "absolute w-8 h-8 rounded-full blur-sm",
+                        isListening ? "bg-red-400" : "bg-cyan-400"
+                    )} 
+                    suppressHydrationWarning={true}
+                />
 
                 {/* Spinning Rings */}
                 <motion.div
                     animate={{ rotate: 360 }}
                     transition={{ duration: 10, repeat: Infinity, ease: "linear" }}
                     className="absolute inset-1 border border-dashed border-cyan-400/30 rounded-full"
+                    suppressHydrationWarning={true}
                 />
                 <motion.div
                     animate={{ rotate: -360 }}
                     transition={{ duration: 15, repeat: Infinity, ease: "linear" }}
                     className="absolute inset-3 border border-dotted border-cyan-400/20 rounded-full"
+                    suppressHydrationWarning={true}
                 />
 
                 {isListening ? (
@@ -91,6 +99,7 @@ export function AstraOrb({ isListening, isSpeaking, isThinking, onClick, classNa
                         initial={{ scale: 0 }}
                         animate={{ scale: 1 }}
                         className="z-10 text-red-100"
+                        suppressHydrationWarning={true}
                     >
                         <Sparkles className="w-6 h-6 animate-pulse" />
                     </motion.div>
@@ -100,7 +109,10 @@ export function AstraOrb({ isListening, isSpeaking, isThinking, onClick, classNa
             </motion.div>
 
             {/* Label Tooltip */}
-            <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-black/80 backdrop-blur-md px-3 py-1 rounded-full border border-white/10 text-[10px] text-cyan-400 font-mono opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+            <div 
+                className="absolute -top-10 left-1/2 -translate-x-1/2 bg-black/80 backdrop-blur-md px-3 py-1 rounded-full border border-white/10 text-[10px] text-cyan-400 font-mono opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap"
+                suppressHydrationWarning={true}
+            >
                 ASTRA CORE: ONLINE
             </div>
         </div>

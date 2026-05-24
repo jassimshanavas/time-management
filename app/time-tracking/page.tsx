@@ -273,6 +273,7 @@ export default function TimeTrackingPage() {
     stopTimeEntry,
     selectedProjectId,
     projects,
+    gamification,
   } = useStore();
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -907,22 +908,28 @@ export default function TimeTrackingPage() {
     <ProtectedRoute>
       <DataLoader>
         <MainLayout>
-          <div className="space-y-6">
-            <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+          <div className="space-y-8 select-none relative overflow-hidden pb-12">
+            {/* Immersive Background Glow Elements */}
+            <div className="absolute top-0 left-1/4 -translate-y-1/2 w-[500px] h-[500px] bg-primary/5 rounded-full filter blur-[120px] pointer-events-none" />
+            <div className="absolute top-1/3 right-1/4 translate-y-1/2 w-[400px] h-[400px] bg-purple-500/5 rounded-full filter blur-[100px] pointer-events-none" />
+
+            {/* Redesigned Header: Temporal Cockpit Dashboard */}
+            <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between border-b border-primary/5 pb-6">
               <div>
-                <div className="mb-1 flex items-center gap-2">
+                <div className="mb-1.5 flex items-center gap-2">
+                  <span className="flex h-2 w-2 rounded-full bg-primary animate-ping" />
                   <Badge
                     variant="outline"
-                    className="h-4 border-primary/20 bg-primary/5 px-2 py-0 text-[9px] font-black uppercase tracking-widest text-primary"
+                    className="h-5 border-primary/20 bg-primary/10 px-2.5 py-0 text-[9px] font-black uppercase tracking-widest text-primary shadow-[0_0_10px_rgba(99,102,241,0.1)]"
                   >
-                    Chronos System
+                    Chronos Temporal HUD v4.2
                   </Badge>
                 </div>
-                <h1 className="bg-gradient-to-r from-foreground to-foreground/60 bg-clip-text text-3xl font-black italic tracking-tight text-transparent lg:text-4xl">
-                  Temporal Audit
+                <h1 className="bg-gradient-to-r from-foreground via-foreground/90 to-foreground/50 bg-clip-text text-3xl font-black italic tracking-tight text-transparent lg:text-4xl">
+                  Temporal Dashboard
                 </h1>
-                <p className="mt-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground opacity-70">
-                  Quantifying your cognitive attention
+                <p className="mt-1 text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground opacity-65">
+                  Cognitive Focus Matrix & Attention Auditing
                 </p>
               </div>
 
@@ -930,9 +937,9 @@ export default function TimeTrackingPage() {
                 {selectedProjectId && (
                   <Badge
                     variant="outline"
-                    className="flex h-10 items-center gap-2 border-primary/10 bg-background/40 px-4 text-[10px] font-black uppercase tracking-widest shadow-sm backdrop-blur-sm"
+                    className="flex h-11 items-center gap-2 border-primary/10 bg-background/30 px-4 text-[10px] font-black uppercase tracking-widest shadow-sm backdrop-blur-sm"
                   >
-                    <span className="text-muted-foreground opacity-50">Context:</span>
+                    <span className="text-muted-foreground opacity-50">Focus stream:</span>
                     {selectedProjectId === 'personal'
                       ? 'Personal'
                       : projects.find((project) => project.id === selectedProjectId)?.name}
@@ -941,22 +948,130 @@ export default function TimeTrackingPage() {
 
                 <Button
                   onClick={() => setIsDialogOpen(true)}
-                  className="h-10 rounded-xl px-4 text-[10px] font-black uppercase tracking-widest shadow-lg shadow-primary/20"
+                  className="h-11 rounded-xl bg-gradient-to-r from-primary to-primary/80 hover:from-primary/95 hover:to-primary/75 px-5 text-[10px] font-black uppercase tracking-widest shadow-lg shadow-primary/25 hover:shadow-primary/35 transition-all hover:scale-[1.01] active:scale-[0.99]"
                 >
-                  <Play className="mr-2 h-4 w-4 fill-current" />
-                  Start Another Timer
+                  <Play className="mr-2 h-4 w-4 fill-current animate-pulse" />
+                  Initiate Stream
                 </Button>
 
                 <Link href="/time-tracking/calendar">
                   <Button
                     variant="outline"
-                    className="h-10 rounded-xl border-primary/10 bg-background/40 px-4 text-[10px] font-black uppercase tracking-widest"
+                    className="h-11 rounded-xl border-primary/10 bg-background/25 hover:bg-muted/30 px-5 text-[10px] font-black uppercase tracking-widest hover:border-primary/20 transition-all hover:scale-[1.01] active:scale-[0.99]"
                   >
                     <Calendar className="mr-2 h-4 w-4" />
                     Timeline View
                   </Button>
                 </Link>
               </div>
+            </div>
+
+            {/* Redesigned HUD Grid */}
+            <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+              {/* Card 1: Donut Focus Ring */}
+              <Card className="relative overflow-hidden rounded-3xl border-primary/5 bg-background/25 shadow-2xl backdrop-blur-2xl transition-all duration-300 hover:border-primary/25 group">
+                <CardContent className="p-6 flex items-center justify-between">
+                  <div className="space-y-1">
+                    <p className="text-[9px] font-black uppercase tracking-[0.2em] text-muted-foreground/60">Audited Today</p>
+                    <h3 className="font-mono text-3xl font-black tracking-tight text-foreground tabular-nums">
+                      {Math.floor(totalTimeToday / 60)}h {totalTimeToday % 60}m
+                    </h3>
+                    <p className="text-[9px] font-bold text-muted-foreground/50">Daily Goal: 6 hours</p>
+                  </div>
+                  {/* Glowing SVG Donut ring */}
+                  <div className="relative h-16 w-16 flex items-center justify-center shrink-0">
+                    <svg className="absolute w-full h-full transform -rotate-90">
+                      <circle cx="32" cy="32" r="26" className="stroke-muted/15 fill-none" strokeWidth="4" />
+                      <circle 
+                        cx="32" 
+                        cy="32" 
+                        r="26" 
+                        className="stroke-primary fill-none transition-all duration-1000" 
+                        strokeWidth="4" 
+                        strokeDasharray={2 * Math.PI * 26}
+                        strokeDashoffset={2 * Math.PI * 26 * (1 - Math.min(1, totalTimeToday / 360))}
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                    <span className="text-[10px] font-black tracking-tighter text-primary tabular-nums">
+                      {Math.round(Math.min(100, (totalTimeToday / 360) * 100))}%
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Card 2: Attention Distribution HUD */}
+              <Card className="relative overflow-hidden rounded-3xl border-primary/5 bg-background/25 shadow-2xl backdrop-blur-2xl transition-all duration-300 hover:border-primary/25 group">
+                <CardContent className="p-6 space-y-3.5">
+                  <p className="text-[9px] font-black uppercase tracking-[0.2em] text-muted-foreground/60">Cognitive Breakdown</p>
+                  <div className="space-y-2">
+                    {Object.keys(categorySummary).length > 0 ? (
+                      Object.entries(categorySummary).slice(0, 3).map(([cat, duration]) => {
+                        const total = Object.values(categorySummary).reduce((a, b) => a + b, 0);
+                        const pct = total > 0 ? Math.round((duration / total) * 100) : 0;
+                        const catColor = getCategoryColor(cat);
+
+                        return (
+                          <div key={cat} className="space-y-1">
+                            <div className="flex items-center justify-between text-[9px] font-black uppercase tracking-wider">
+                              <span className="truncate max-w-[120px]">{cat}</span>
+                              <span className="text-muted-foreground/50 tabular-nums">{pct}%</span>
+                            </div>
+                            <div className="h-1.5 w-full bg-muted/20 rounded-full overflow-hidden">
+                              <div 
+                                style={{ width: `${pct}%`, backgroundColor: catColor }}
+                                className="h-full rounded-full transition-all duration-700"
+                              />
+                            </div>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <p className="text-[10px] font-bold text-muted-foreground/40 italic py-2">No attention breakdown logged today</p>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Card 3: Active Temporal Streams */}
+              <Card className="relative overflow-hidden rounded-3xl border-primary/5 bg-background/25 shadow-2xl backdrop-blur-2xl transition-all duration-300 hover:border-primary/25 group">
+                <CardContent className="p-6 flex items-center justify-between gap-4">
+                  <div className="space-y-1.5">
+                    <p className="text-[9px] font-black uppercase tracking-[0.2em] text-muted-foreground/60">Active Matrix</p>
+                    <h3 className="font-mono text-3xl font-black tracking-tight text-foreground tabular-nums">
+                      {runningEntries.length} <span className="text-xs text-muted-foreground uppercase tracking-wider font-bold">Session{runningEntries.length === 1 ? '' : 's'}</span>
+                    </h3>
+                    <p className="text-[9px] font-bold text-muted-foreground/50">
+                      {runningEntries.length > 0 
+                        ? `Head stream: ${runningEntries[0].category}`
+                        : 'Standby mode (ready to track)'}
+                    </p>
+                  </div>
+                  <div className="h-11 w-11 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
+                    <Clock className={cn("h-5 w-5 text-primary", runningEntries.length > 0 && "animate-spin-slow")} />
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Card 4: Gamified Focus HUD */}
+              <Card className="relative overflow-hidden rounded-3xl border-primary/5 bg-background/25 shadow-2xl backdrop-blur-2xl transition-all duration-300 hover:border-primary/25 group">
+                <CardContent className="p-6 flex items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <p className="text-[9px] font-black uppercase tracking-[0.2em] text-muted-foreground/60">Focus Rank</p>
+                    <h3 className="font-mono text-3xl font-black tracking-tight text-foreground">
+                      Rank {gamification?.level || 1}
+                    </h3>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span className="text-[8px] font-black uppercase tracking-wider text-primary/75">
+                        {gamification?.xp || 0} XP Audited
+                      </span>
+                    </div>
+                  </div>
+                  <div className="h-11 w-11 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center shrink-0">
+                    <Sparkles className="h-5 w-5 text-amber-400 animate-pulse" />
+                  </div>
+                </CardContent>
+              </Card>
             </div>
 
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
@@ -1172,7 +1287,7 @@ export default function TimeTrackingPage() {
               </DialogContent>
             </Dialog>
 
-            <Card className="group relative overflow-hidden rounded-[2.5rem] border-none bg-background/40 shadow-2xl transition-all duration-500 hover:shadow-primary/5 backdrop-blur-2xl">
+            <Card className="group relative overflow-hidden rounded-3xl border border-primary/5 bg-background/25 shadow-2xl backdrop-blur-2xl transition-all duration-500 hover:border-primary/15">
               <div className="absolute left-0 top-0 h-1 w-full bg-muted/20">
                 <div
                   className={cn(
@@ -1237,59 +1352,74 @@ export default function TimeTrackingPage() {
                     </div>
 
                     <div className="grid gap-4 xl:grid-cols-2">
-                      {runningEntries.map((entry) => (
-                        <div
-                          key={entry.id}
-                          className="rounded-[2rem] border border-primary/10 bg-background/50 p-6 shadow-lg shadow-primary/5"
-                        >
-                          <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
-                            <div className="min-w-0 space-y-4">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <span className="text-base font-black uppercase tracking-tight italic text-primary">
-                                  {entry.category}
-                                </span>
-                                {entry.projectId && <ProjectBadge projectId={entry.projectId} className="h-5" />}
-                                {entry.taskId && (
-                                  <button
-                                    type="button"
-                                    onClick={() => handleNavigateToTask(entry.taskId!)}
-                                    className="rounded-full border border-primary/20 bg-primary/5 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-primary transition-colors hover:bg-primary/10"
+                      {runningEntries.map((entry) => {
+                        const catColor = getCategoryColor(entry.category);
+                        return (
+                          <div
+                            key={entry.id}
+                            className="relative overflow-hidden rounded-[2.5rem] border border-primary/5 bg-background/25 p-8 shadow-2xl backdrop-blur-2xl transition-all duration-500 hover:border-primary/20 hover:shadow-primary/5 group pl-10"
+                          >
+                            {/* Color bar indicator based on focus category */}
+                            <div 
+                              className="absolute left-0 top-0 bottom-0 w-2.5 transition-all duration-500" 
+                              style={{ backgroundColor: catColor }}
+                            />
+
+                            <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
+                              <div className="min-w-0 space-y-4">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <Badge 
+                                    variant="outline" 
+                                    className="border-current text-[10px] font-black uppercase tracking-widest px-2.5 py-0.5 bg-background/50"
+                                    style={{ color: catColor }}
                                   >
-                                    {findTaskTitle(entry.taskId) || 'Linked task'}
-                                  </button>
+                                    {entry.category}
+                                  </Badge>
+                                  {entry.projectId && <ProjectBadge projectId={entry.projectId} className="h-5" />}
+                                  {entry.taskId && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleNavigateToTask(entry.taskId!)}
+                                      className="rounded-full border border-primary/10 bg-primary/5 px-3 py-1 text-[9px] font-black uppercase tracking-[0.16em] text-primary transition-all hover:bg-primary/10 hover:border-primary/30"
+                                    >
+                                      {findTaskTitle(entry.taskId) || 'Linked task'}
+                                    </button>
+                                  )}
+                                </div>
+
+                                {entry.description && (
+                                  <p className="max-w-xl text-xs font-semibold italic text-foreground/80">
+                                    &ldquo;{entry.description}&rdquo;
+                                  </p>
                                 )}
-                              </div>
 
-                              {entry.description && (
-                                <p className="max-w-xl text-sm font-medium italic text-muted-foreground/65">
-                                  {entry.description}
-                                </p>
-                              )}
-
-                              <div className="flex flex-wrap items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-muted-foreground/50">
-                                <div className="flex items-center gap-2 rounded-full border border-primary/10 bg-muted/20 px-3 py-1.5">
-                                  <Clock className="h-3 w-3 text-primary animate-spin-slow" />
-                                  Started {formatDistanceToNow(new Date(entry.startTime), { addSuffix: true })}
-                                </div>
-                                <div className="rounded-full border border-primary/10 bg-muted/20 px-3 py-1.5">
-                                  {format(new Date(entry.startTime), 'MMM d, h:mm a')}
+                                <div className="flex flex-wrap items-center gap-2 text-[9px] font-black uppercase tracking-[0.18em] text-muted-foreground/45">
+                                  <div className="flex items-center gap-1.5 rounded-full border border-primary/5 bg-muted/10 px-3 py-1.5">
+                                    <Clock className="h-3 w-3 text-primary animate-spin-slow" />
+                                    Started {formatDistanceToNow(new Date(entry.startTime), { addSuffix: true })}
+                                  </div>
+                                  <div className="rounded-full border border-primary/5 bg-muted/10 px-3 py-1.5">
+                                    {format(new Date(entry.startTime), 'MMM d, h:mm a')}
+                                  </div>
                                 </div>
                               </div>
-                            </div>
 
-                            <div className="flex min-w-[180px] flex-col items-start gap-4 sm:items-end">
-                              <div className="font-mono text-3xl font-black tracking-tighter text-foreground tabular-nums sm:text-4xl">
-                                {getElapsedTime(entry.startTime, currentTime)}
+                              <div className="flex min-w-[180px] flex-col items-start gap-4 sm:items-end shrink-0">
+                                <div className="space-y-0.5 sm:text-right">
+                                  <div className="font-mono text-3xl font-black tracking-tighter text-foreground tabular-nums sm:text-4xl bg-gradient-to-r from-foreground to-foreground/75 bg-clip-text text-transparent drop-shadow-[0_0_15px_rgba(255,255,255,0.05)]">
+                                    {getElapsedTime(entry.startTime, currentTime)}
+                                  </div>
+                                  <span className="text-[8px] font-black uppercase tracking-widest text-primary/55 block">Stopwatch Cockpit active</span>
+                                </div>
+                                <Button
+                                  onClick={() => handleStopTimer(entry.id)}
+                                  className="h-12 w-full rounded-2xl bg-destructive hover:bg-destructive/90 text-xs font-black text-destructive-foreground shadow-lg shadow-destructive/15 transition-all hover:scale-[1.01] active:scale-[0.99] sm:w-auto"
+                                >
+                                  <Square className="mr-2 h-4 w-4 fill-current animate-pulse" />
+                                  Stop Focus Stream
+                                </Button>
                               </div>
-                              <Button
-                                onClick={() => handleStopTimer(entry.id)}
-                                className="h-12 w-full rounded-2xl bg-destructive text-sm font-black text-destructive-foreground shadow-xl shadow-destructive/20 transition-all hover:scale-[1.01] hover:bg-destructive/90 active:scale-[0.99] sm:w-auto"
-                              >
-                                <Square className="mr-2 h-4 w-4 fill-current" />
-                                Stop This Timer
-                              </Button>
                             </div>
-                          </div>
 
                           {/* Chronos Journal Live Logging Panel */}
                           <div className="mt-6 border-t border-primary/10 pt-6">
@@ -1553,7 +1683,8 @@ export default function TimeTrackingPage() {
                             )}
                           </div>
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 ) : (
@@ -1589,7 +1720,7 @@ export default function TimeTrackingPage() {
               </CardContent>
             </Card>
 
-            <Card className="overflow-hidden rounded-[2rem] border-primary/5 bg-background/60 shadow-2xl backdrop-blur-xl">
+            <Card className="overflow-hidden rounded-3xl border-primary/5 bg-background/25 shadow-2xl backdrop-blur-2xl transition-all duration-300 hover:border-primary/15">
               <CardHeader className="border-b border-primary/5 p-6">
                 <CardTitle className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/50">
                   <Plus className="h-3.5 w-3.5" />
@@ -1730,63 +1861,7 @@ export default function TimeTrackingPage() {
               </CardContent>
             </Card>
 
-            <div className="grid grid-cols-1 gap-6 sm:grid-cols-3">
-              <Card className="group relative overflow-hidden rounded-[1.5rem] border-primary/5 bg-background/40 p-6 backdrop-blur-sm transition-all duration-500 hover:border-primary/20">
-                <div className="absolute right-0 top-0 p-4 opacity-5 transition-opacity group-hover:opacity-10">
-                  <Clock className="h-12 w-12 text-primary" />
-                </div>
-                <h3 className="mb-4 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/50">
-                  <div className="h-1 w-1 rounded-full bg-primary" />
-                  Temporal Flow [24H]
-                </h3>
-                <div className="flex items-baseline gap-1">
-                  <div className="text-3xl font-black tracking-tighter text-primary tabular-nums">
-                    {formatDuration(totalTimeToday).split(' ')[0]}
-                  </div>
-                  <span className="text-sm font-black uppercase tracking-widest text-primary/40">
-                    {formatDuration(totalTimeToday).split(' ')[1] || 'm'}
-                  </span>
-                </div>
-                <div className="mt-6 h-1 w-full overflow-hidden rounded-full bg-primary/5">
-                  <div
-                    className="h-full bg-primary animate-in slide-in-from-left duration-1000"
-                    style={{ width: '70%' }}
-                  />
-                </div>
-              </Card>
 
-              <Card className="group relative overflow-hidden rounded-[1.5rem] border-primary/5 bg-background/40 p-6 backdrop-blur-sm transition-all duration-500 hover:border-primary/20">
-                <div className="absolute right-0 top-0 p-4 opacity-5 transition-opacity group-hover:opacity-10">
-                  <TrendingUp className="h-12 w-12 text-emerald-500" />
-                </div>
-                <h3 className="mb-4 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/50">
-                  <div className="h-1 w-1 rounded-full bg-emerald-500" />
-                  Focus Snapshots
-                </h3>
-                <div className="text-4xl font-black leading-none tracking-tighter text-foreground">
-                  {todayEntries.length}
-                </div>
-                <p className="mt-3 text-[9px] font-black uppercase tracking-[0.2em] text-muted-foreground/30">
-                  Initialized Sessions Today
-                </p>
-              </Card>
-
-              <Card className="group relative overflow-hidden rounded-[1.5rem] border-primary/5 bg-background/40 p-6 backdrop-blur-sm transition-all duration-500 hover:border-primary/20">
-                <div className="absolute right-0 top-0 p-4 opacity-5 transition-opacity group-hover:opacity-10">
-                  <Sparkles className="h-12 w-12 text-blue-500" />
-                </div>
-                <h3 className="mb-4 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/50">
-                  <div className="h-1 w-1 rounded-full bg-blue-500" />
-                  Context Diversity
-                </h3>
-                <div className="text-4xl font-black leading-none tracking-tighter text-foreground">
-                  {Object.keys(categorySummary).length}
-                </div>
-                <p className="mt-3 text-[9px] font-black uppercase tracking-[0.2em] text-muted-foreground/30">
-                  {Object.keys(categorySummary).length === 1 ? 'Focus Context' : 'Unique Contexts'}
-                </p>
-              </Card>
-            </div>
 
             <div className="grid items-start gap-6 lg:grid-cols-3">
               {Object.keys(categorySummary).length > 0 && (
@@ -1821,7 +1896,7 @@ export default function TimeTrackingPage() {
                 </Card>
               )}
 
-              <Card className="overflow-hidden rounded-[2rem] border-primary/5 bg-background/60 shadow-2xl backdrop-blur-xl lg:col-span-2">
+              <Card className="overflow-hidden rounded-3xl border-primary/5 bg-background/25 shadow-2xl backdrop-blur-2xl transition-all duration-300 hover:border-primary/15 lg:col-span-2">
                 <CardHeader className="border-b border-primary/5 p-6">
                   <CardTitle className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/40">
                     Chronological Logs
