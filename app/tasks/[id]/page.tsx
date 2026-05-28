@@ -84,6 +84,11 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import type { Task, TaskComment, TaskSubtask, TaskJournalEntry, TimeEntry } from '@/types';
 import { ProtectedRoute } from '@/components/protected-route';
 import { DataLoader } from '@/components/data-loader';
+import { cn } from '@/lib/utils';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { CompletedOutliner } from '@/components/time-tracking/completed-outliner';
+import { MarkdownNotesRenderer } from '@/components/time-tracking/markdown-notes-renderer';
+import { getReflectionsOnly, compileUpdatesToMarkdown } from '@/components/time-tracking/completed-outliner-helpers';
 
 const PRESET_CATEGORIES = [
   'Work',
@@ -128,6 +133,7 @@ function TaskDetailPageContent() {
   const [newJournalEntry, setNewJournalEntry] = useState('');
   const [isAddingJournal, setIsAddingJournal] = useState(false);
   const [isSummaryDialogOpen, setIsSummaryDialogOpen] = useState(false);
+  const [viewingNotesMode, setViewingNotesMode] = useState<Record<string, 'outliner' | 'reflections'>>({});
   const [isDependencyModalOpen, setIsDependencyModalOpen] = useState(false);
   const [sessionSummary, setSessionSummary] = useState('');
   const [sessionCategory, setSessionCategory] = useState('');
@@ -301,16 +307,31 @@ function TaskDetailPageContent() {
 
   const handleConfirmStop = async () => {
     if (editingEntryId) {
+      const currentEntry = timeEntries.find((entry) => entry.id === editingEntryId);
+      const compiledLog = currentEntry?.liveUpdates && currentEntry.liveUpdates.length > 0
+        ? compileUpdatesToMarkdown(currentEntry.liveUpdates, currentEntry.threads)
+        : null;
+      const mergedNotes = sessionSummary && compiledLog
+        ? `${sessionSummary}\n\n${compiledLog}`
+        : sessionSummary || compiledLog || '';
+
       await updateTimeEntry(editingEntryId, {
-        notes: sessionSummary,
+        notes: mergedNotes,
         category: sessionCategory,
         productivityScore: sessionScore || undefined
       });
       setEditingEntryId(null);
     } else if (pendingManualEntry) {
+      const compiledLog = (pendingManualEntry as any).liveUpdates && (pendingManualEntry as any).liveUpdates.length > 0
+        ? compileUpdatesToMarkdown((pendingManualEntry as any).liveUpdates, (pendingManualEntry as any).threads)
+        : null;
+      const mergedNotes = sessionSummary && compiledLog
+        ? `${sessionSummary}\n\n${compiledLog}`
+        : sessionSummary || compiledLog || '';
+
       await addTimeEntry({
         ...pendingManualEntry,
-        notes: sessionSummary,
+        notes: mergedNotes || undefined,
         category: sessionCategory || pendingManualEntry.category,
         productivityScore: sessionScore || undefined
       });
@@ -322,7 +343,14 @@ function TaskDetailPageContent() {
         minutes: '30',
       }));
     } else if (taskRunningEntry) {
-      await stopTimeEntry(taskRunningEntry.id, sessionSummary, sessionScore || undefined);
+      const compiledLog = taskRunningEntry.liveUpdates && taskRunningEntry.liveUpdates.length > 0
+        ? compileUpdatesToMarkdown(taskRunningEntry.liveUpdates, taskRunningEntry.threads)
+        : null;
+      const finalNotes = sessionSummary && compiledLog
+        ? `${sessionSummary}\n\n${compiledLog}`
+        : sessionSummary || compiledLog || '';
+
+      await stopTimeEntry(taskRunningEntry.id, finalNotes, sessionScore || undefined);
     }
     toast.success(editingEntryId ? 'Entry updated' : 'Operation recorded');
     setSessionSummary('');
@@ -333,11 +361,17 @@ function TaskDetailPageContent() {
 
   const handleEditNotes = (entry: TimeEntry) => {
     setEditingEntryId(entry.id);
-    setSessionSummary(entry.notes || '');
+    setSessionSummary(getReflectionsOnly(entry.notes || ''));
     setSessionCategory(entry.category || task?.title || '');
     setSessionScore(entry.productivityScore || 0);
     setIsSummaryDialogOpen(true);
   };
+
+  const previewEntry = editingEntryId
+    ? timeEntries.find(e => e.id === editingEntryId)
+    : pendingManualEntry
+    ? pendingManualEntry
+    : taskRunningEntry;
 
   const handleDropTemplate = (templateName: string, hour: number) => {
     if (!task || !selectedDayDate) return;
@@ -1231,8 +1265,8 @@ function TaskDetailPageContent() {
                         {recentEntries.length > 0 ? (
                           <>
                             {(showAllTimeEntries ? recentEntries : recentEntries.slice(0, 5)).map((entry) => (
-                              <div key={entry.id} className="group flex items-center justify-between p-4 rounded-2xl bg-muted/20 border border-transparent hover:border-primary/10 hover:bg-muted/40 transition-all">
-                                <div className="flex flex-col">
+                              <div key={entry.id} className="group flex items-start justify-between p-4 rounded-2xl bg-muted/20 border border-transparent hover:border-primary/10 hover:bg-muted/40 transition-all">
+                                <div className="flex flex-col flex-1 min-w-0">
                                   <div className="flex items-center gap-3 mb-0.5">
                                     <p className="text-sm font-black text-foreground/80">{entry.description || "Calibration Session"}</p>
                                     {entry.productivityScore ? (
@@ -1246,7 +1280,52 @@ function TaskDetailPageContent() {
                                   <p className="text-[10px] font-bold text-muted-foreground uppercase opacity-60">
                                     {toDate(entry.startTime) ? format(toDate(entry.startTime)!, 'MMM d, h:mm a') : 'Unstable Data'} • {formatDuration(getEntryDuration(entry))}
                                   </p>
-                                  {entry.notes && <p className="mt-1 text-[10px] italic text-primary/60 truncate max-w-md">{entry.notes}</p>}
+                                  {((entry.liveUpdates && entry.liveUpdates.length > 0) || entry.notes) && (() => {
+                                    const hasUpdates = entry.liveUpdates && entry.liveUpdates.length > 0;
+                                    const reflections = getReflectionsOnly(entry.notes || '');
+                                    const hasNotes = !!reflections;
+                                    const mode = viewingNotesMode[entry.id] || (hasUpdates ? 'outliner' : 'reflections');
+
+                                    return (
+                                      <div className="mt-2 rounded-xl border border-primary/5 bg-primary/5 p-3 space-y-2 text-start">
+                                        {/* Tab Switcher if both are present */}
+                                        {hasUpdates && hasNotes && (
+                                          <div className="flex items-center gap-1.5 border-b border-primary/5 pb-1.5">
+                                            <button
+                                              type="button"
+                                              onClick={() => setViewingNotesMode((p) => ({ ...p, [entry.id]: 'outliner' }))}
+                                              className={cn(
+                                                "text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded transition-all border",
+                                                mode === 'outliner'
+                                                  ? "bg-primary/10 border-primary/20 text-primary"
+                                                  : "border-transparent text-muted-foreground/60 hover:text-muted-foreground hover:bg-muted/30"
+                                              )}
+                                            >
+                                              Chronos Outliner
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => setViewingNotesMode((p) => ({ ...p, [entry.id]: 'reflections' }))}
+                                              className={cn(
+                                                "text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded transition-all border",
+                                                mode === 'reflections'
+                                                  ? "bg-primary/10 border-primary/20 text-primary"
+                                                  : "border-transparent text-muted-foreground/60 hover:text-muted-foreground hover:bg-muted/30"
+                                              )}
+                                            >
+                                              Reflections
+                                            </button>
+                                          </div>
+                                        )}
+
+                                        {mode === 'outliner' && hasUpdates ? (
+                                          <CompletedOutliner entry={entry} />
+                                        ) : (
+                                          <MarkdownNotesRenderer notes={hasUpdates ? reflections : (entry.notes || '')} />
+                                        )}
+                                      </div>
+                                    );
+                                  })()}
                                 </div>
                                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                   <Button size="icon" variant="ghost" className="h-8 w-8 rounded-lg" onClick={() => handleEditNotes(entry)}><Edit2 className="h-3 w-3" /></Button>
@@ -2333,132 +2412,145 @@ function TaskDetailPageContent() {
               }
             }}
           >
-            <DialogContent className="max-w-xl p-0 overflow-hidden rounded-[2rem] border-primary/10 bg-background/95 backdrop-blur-2xl shadow-2xl">
-              <div className="p-8 sm:p-10">
-                <DialogHeader className="mb-8">
-                  <DialogTitle className="text-2xl font-black tracking-tight italic">
-                    {editingEntryId ? 'Edit Session Notes' : pendingManualEntry ? 'Log Details' : 'Session Summary'}
-                  </DialogTitle>
-                  <DialogDescription className="text-xs font-black uppercase tracking-widest opacity-40">
-                    {editingEntryId ? 'Update your reflections for this session' : pendingManualEntry ? 'Review and save your manual log' : 'Capture the outcomes of this temporal cycle'}
-                  </DialogDescription>
-                </DialogHeader>
+            <DialogContent className="max-h-[90vh] max-w-xl p-0 overflow-hidden rounded-[2rem] border-primary/10 bg-background/95 backdrop-blur-2xl shadow-2xl">
+              <ScrollArea className="max-h-[85vh]">
+                <div className="p-8 sm:p-10">
+                  <DialogHeader className="mb-8">
+                    <DialogTitle className="text-2xl font-black tracking-tight italic">
+                      {editingEntryId ? 'Edit Session Notes' : pendingManualEntry ? 'Log Details' : 'Session Summary'}
+                    </DialogTitle>
+                    <DialogDescription className="text-xs font-black uppercase tracking-widest opacity-40">
+                      {editingEntryId ? 'Update your reflections for this session' : pendingManualEntry ? 'Review and save your manual log' : 'Capture the outcomes of this temporal cycle'}
+                    </DialogDescription>
+                  </DialogHeader>
 
-                <div className="space-y-6">
-                  <div className="space-y-3">
-                    <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/60">Session Identity</Label>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div className="min-w-0">
-                        <Select
-                          value={sessionCategory || (pendingManualEntry?.category) || task?.title || 'General'}
-                          onValueChange={(v) => setSessionCategory(v)}
-                        >
-                          <SelectTrigger className="bg-muted/30 border-primary/5 h-12 rounded-xl font-black text-[9px] uppercase tracking-wider w-full overflow-hidden">
-                            <div className="truncate text-left w-full">
-                              <SelectValue placeholder="Category" />
-                            </div>
-                          </SelectTrigger>
-                          <SelectContent className="rounded-2xl border-primary/10">
-                            <SelectItem value={task?.title || 'General'}>
-                              <div className="flex items-center gap-2">
-                                <div className="w-1.5 h-1.5 rounded-full" style={{ background: getCategoryColor(task?.title || 'General') }} />
-                                <span className="truncate">{task?.title || 'General'}</span>
+                  <div className="space-y-6">
+                    <div className="space-y-3">
+                      <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/60">Session Identity</Label>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="min-w-0">
+                          <Select
+                            value={sessionCategory || (pendingManualEntry?.category) || task?.title || 'General'}
+                            onValueChange={(v) => setSessionCategory(v)}
+                          >
+                            <SelectTrigger className="bg-muted/30 border-primary/5 h-12 rounded-xl font-black text-[9px] uppercase tracking-wider w-full overflow-hidden">
+                              <div className="truncate text-left w-full">
+                                <SelectValue placeholder="Category" />
                               </div>
-                            </SelectItem>
-                            {PRESET_CATEGORIES.map(cat => (
-                              <SelectItem key={cat} value={cat}>
+                            </SelectTrigger>
+                            <SelectContent className="rounded-2xl border-primary/10">
+                              <SelectItem value={task?.title || 'General'}>
                                 <div className="flex items-center gap-2">
-                                  <div className="w-1.5 h-1.5 rounded-full" style={{ background: getCategoryColor(cat) }} />
-                                  <span>{cat}</span>
+                                  <div className="w-1.5 h-1.5 rounded-full" style={{ background: getCategoryColor(task?.title || 'General') }} />
+                                  <span className="truncate">{task?.title || 'General'}</span>
                                 </div>
                               </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="flex items-center px-4 h-12 rounded-xl bg-muted/10 border border-primary/5 text-[10px] font-black uppercase tracking-widest text-muted-foreground truncate">
-                        {pendingManualEntry ? 'Manual Mode' : 'Live Relay'}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-3">
-                    <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/60">Productivity Rating (Optional)</Label>
-                    <div className="flex flex-wrap gap-2">
-                      {[
-                        { score: 1, label: 'Distracted' },
-                        { score: 2, label: 'Slow' },
-                        { score: 3, label: 'Steady' },
-                        { score: 4, label: 'Sharp' },
-                        { score: 5, label: 'Flow' }
-                      ].map(rating => (
-                        <Button
-                          key={rating.score}
-                          type="button"
-                          variant="outline"
-                          onClick={() => setSessionScore(sessionScore === rating.score ? 0 : rating.score)}
-                          className={`flex-1 h-14 rounded-xl transition-all ${sessionScore === rating.score ? 'bg-amber-500/10 border-amber-500 text-amber-500 shadow-sm' : 'border-primary/10 hover:border-amber-500/30 hover:bg-amber-500/5'}`}
-                        >
-                          <div className="flex flex-col items-center gap-1">
-                            <div className="flex items-center gap-0.5">
-                              {Array.from({ length: 5 }).map((_, i) => (
-                                <Star key={i} className={`h-3 w-3 ${i < rating.score ? (sessionScore === rating.score ? 'fill-amber-500 text-amber-500' : 'fill-current opacity-60') : 'text-muted-foreground/20'}`} />
+                              {PRESET_CATEGORIES.map(cat => (
+                                <SelectItem key={cat} value={cat}>
+                                  <div className="flex items-center gap-2">
+                                    <div className="w-1.5 h-1.5 rounded-full" style={{ background: getCategoryColor(cat) }} />
+                                    <span>{cat}</span>
+                                  </div>
+                                </SelectItem>
                               ))}
-                            </div>
-                            <span className="text-[8px] font-black uppercase tracking-widest opacity-80">{rating.label}</span>
-                          </div>
-                        </Button>
-                      ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="flex items-center px-4 h-12 rounded-xl bg-muted/10 border border-primary/5 text-[10px] font-black uppercase tracking-widest text-muted-foreground truncate">
+                          {pendingManualEntry ? 'Manual Mode' : 'Live Relay'}
+                        </div>
+                      </div>
                     </div>
-                  </div>
 
-                  <div className="space-y-3">
-                    <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/60">Accomplishments & Notes</Label>
-                    <Textarea
-                      value={sessionSummary}
-                      onChange={(e) => setSessionSummary(e.target.value)}
-                      placeholder="What did you achieve? Any pending items or next steps?"
-                      className="bg-muted/30 min-h-[150px] rounded-2xl border-primary/5 focus:ring-primary/20 transition-all text-base font-medium p-4 resize-none"
-                    />
-                  </div>
+                    <div className="space-y-3">
+                      <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/60">Productivity Rating (Optional)</Label>
+                      <div className="flex flex-wrap gap-2">
+                        {[
+                          { score: 1, label: 'Distracted' },
+                          { score: 2, label: 'Slow' },
+                          { score: 3, label: 'Steady' },
+                          { score: 4, label: 'Sharp' },
+                          { score: 5, label: 'Flow' }
+                        ].map(rating => (
+                          <Button
+                            key={rating.score}
+                            type="button"
+                            variant="outline"
+                            onClick={() => setSessionScore(sessionScore === rating.score ? 0 : rating.score)}
+                            className={`flex-1 h-14 rounded-xl transition-all ${sessionScore === rating.score ? 'bg-amber-500/10 border-amber-500 text-amber-500 shadow-sm' : 'border-primary/10 hover:border-amber-500/30 hover:bg-amber-500/5'}`}
+                          >
+                            <div className="flex flex-col items-center gap-1">
+                              <div className="flex items-center gap-0.5">
+                                {Array.from({ length: 5 }).map((_, i) => (
+                                  <Star key={i} className={`h-3 w-3 ${i < rating.score ? (sessionScore === rating.score ? 'fill-amber-500 text-amber-500' : 'fill-current opacity-60') : 'text-muted-foreground/20'}`} />
+                                ))}
+                              </div>
+                              <span className="text-[8px] font-black uppercase tracking-widest opacity-80">{rating.label}</span>
+                            </div>
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
 
-                  <div className="flex gap-4">
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        setIsSummaryDialogOpen(false);
-                        setEditingEntryId(null);
-                        setPendingManualEntry(null);
-                        setSessionSummary('');
-                      }}
-                      className="flex-1 h-14 rounded-xl font-black text-[10px] uppercase tracking-widest border-primary/10 hover:bg-muted/50"
-                    >
-                      {editingEntryId || pendingManualEntry ? 'Cancel' : 'Discard & Keep Running'}
-                    </Button>
-                    <Button
-                      onClick={handleConfirmStop}
-                      className="flex-1 h-14 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-primary/20"
-                    >
-                      {editingEntryId ? 'Update Notes' : pendingManualEntry ? 'Save Log' : 'Terminate & Save'}
-                    </Button>
-                  </div>
+                    {previewEntry && (previewEntry as any).liveUpdates && (previewEntry as any).liveUpdates.length > 0 && (
+                      <div className="space-y-3">
+                        <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/60">
+                          Session Log Preview
+                        </Label>
+                        <div className="max-h-[220px] overflow-y-auto rounded-2xl border border-primary/10 bg-muted/10 p-4 custom-scrollbar text-start">
+                          <CompletedOutliner entry={previewEntry as any} />
+                        </div>
+                      </div>
+                    )}
 
-                  {!editingEntryId && !pendingManualEntry && (
-                    <Button
-                      variant="ghost"
-                      onClick={() => {
-                        if (taskRunningEntry) {
-                          stopTimeEntry(taskRunningEntry.id);
+                    <div className="space-y-3">
+                      <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/60">Accomplishments & Notes</Label>
+                      <Textarea
+                        value={sessionSummary}
+                        onChange={(e) => setSessionSummary(e.target.value)}
+                        placeholder="What did you achieve? Any pending items or next steps?"
+                        className="bg-muted/30 min-h-[150px] rounded-2xl border-primary/5 focus:ring-primary/20 transition-all text-base font-medium p-4 resize-none"
+                      />
+                    </div>
+
+                    <div className="flex gap-4">
+                      <Button
+                        variant="outline"
+                        onClick={() => {
                           setIsSummaryDialogOpen(false);
-                        }
-                      }}
-                      className="w-full text-[9px] font-black uppercase tracking-[0.2em] opacity-30 hover:opacity-100 transition-opacity"
-                    >
-                      Terminate without summary
-                    </Button>
-                  )}
+                          setEditingEntryId(null);
+                          setPendingManualEntry(null);
+                          setSessionSummary('');
+                        }}
+                        className="flex-1 h-14 rounded-xl font-black text-[10px] uppercase tracking-widest border-primary/10 hover:bg-muted/50"
+                      >
+                        {editingEntryId || pendingManualEntry ? 'Cancel' : 'Discard & Keep Running'}
+                      </Button>
+                      <Button
+                        onClick={handleConfirmStop}
+                        className="flex-1 h-14 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-primary/20"
+                      >
+                        {editingEntryId ? 'Update Notes' : pendingManualEntry ? 'Save Log' : 'Terminate & Save'}
+                      </Button>
+                    </div>
+
+                    {!editingEntryId && !pendingManualEntry && (
+                      <Button
+                        variant="ghost"
+                        onClick={() => {
+                          if (taskRunningEntry) {
+                            stopTimeEntry(taskRunningEntry.id);
+                            setIsSummaryDialogOpen(false);
+                          }
+                        }}
+                        className="w-full text-[9px] font-black uppercase tracking-[0.2em] opacity-30 hover:opacity-100 transition-opacity"
+                      >
+                        Terminate without summary
+                      </Button>
+                    )}
+                  </div>
                 </div>
-              </div>
+              </ScrollArea>
             </DialogContent>
           </Dialog>
 
@@ -3193,7 +3285,52 @@ function TaskDetailPageContent() {
                                     <p className="text-[10px] font-bold text-muted-foreground">
                                       {toDate(entry.startTime) && format(toDate(entry.startTime)!, 'h:mm a')} - {toDate(entry.endTime) && format(toDate(entry.endTime)!, 'h:mm a')}
                                     </p>
-                                    {entry.notes && <p className="text-[10px] italic text-primary/60 mt-2">{entry.notes}</p>}
+                                    {((entry.liveUpdates && entry.liveUpdates.length > 0) || entry.notes) && (() => {
+                                      const hasUpdates = entry.liveUpdates && entry.liveUpdates.length > 0;
+                                      const reflections = getReflectionsOnly(entry.notes || '');
+                                      const hasNotes = !!reflections;
+                                      const mode = viewingNotesMode[entry.id] || (hasUpdates ? 'outliner' : 'reflections');
+
+                                      return (
+                                        <div className="mt-2 rounded-xl border border-primary/5 bg-primary/5 p-3 space-y-2 text-start">
+                                          {/* Tab Switcher if both are present */}
+                                          {hasUpdates && hasNotes && (
+                                            <div className="flex items-center gap-1.5 border-b border-primary/5 pb-1.5">
+                                              <button
+                                                type="button"
+                                                onClick={() => setViewingNotesMode((p) => ({ ...p, [entry.id]: 'outliner' }))}
+                                                className={cn(
+                                                  "text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded transition-all border",
+                                                  mode === 'outliner'
+                                                    ? "bg-primary/10 border-primary/20 text-primary"
+                                                    : "border-transparent text-muted-foreground/60 hover:text-muted-foreground hover:bg-muted/30"
+                                                )}
+                                              >
+                                                Chronos Outliner
+                                              </button>
+                                              <button
+                                                type="button"
+                                                onClick={() => setViewingNotesMode((p) => ({ ...p, [entry.id]: 'reflections' }))}
+                                                className={cn(
+                                                  "text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded transition-all border",
+                                                  mode === 'reflections'
+                                                    ? "bg-primary/10 border-primary/20 text-primary"
+                                                    : "border-transparent text-muted-foreground/60 hover:text-muted-foreground hover:bg-muted/30"
+                                                )}
+                                              >
+                                                Reflections
+                                              </button>
+                                            </div>
+                                          )}
+
+                                          {mode === 'outliner' && hasUpdates ? (
+                                            <CompletedOutliner entry={entry} />
+                                          ) : (
+                                            <MarkdownNotesRenderer notes={hasUpdates ? reflections : (entry.notes || '')} />
+                                          )}
+                                        </div>
+                                      );
+                                    })()}
                                   </div>
                                   <div className="flex items-center gap-2 no-capture">
                                     <Badge variant="secondary" className="font-black">{formatDuration(getEntryDuration(entry))}</Badge>

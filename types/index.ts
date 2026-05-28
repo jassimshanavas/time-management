@@ -137,6 +137,14 @@ export interface Habit {
   createdAt: Date;
 }
 
+export interface JournalThread {
+  id: string;
+  name: string;
+  color: string; // e.g. 'violet' | 'cyan' | 'emerald' | 'amber' | 'rose' | 'indigo'
+  status: 'active' | 'paused' | 'blocked';
+  createdAt: string; // elapsed time string when thread was created
+}
+
 export interface LiveUpdateNode {
   id: string;
   text: string;
@@ -147,6 +155,8 @@ export interface LiveUpdateNode {
   completed?: boolean;
   phase?: string;
   type: 'note' | 'todo';
+  threadId?: string; // which JournalThread this node belongs to
+  blockedBy?: string; // nodeId this node is waiting on
 }
 
 export interface TimeEntry {
@@ -162,6 +172,7 @@ export interface TimeEntry {
   notes?: string;
   productivityScore?: number; // 1-5
   liveUpdates?: LiveUpdateNode[];
+  threads?: JournalThread[]; // Multi-thread work streams
 }
 
 export interface SleepEntry {

@@ -36,7 +36,7 @@ interface AppStore {
   // Tasks
   tasks: Task[];
   loadTasks: () => Promise<void>;
-  addTask: (task: Omit<Task, 'id' | 'userId'>) => Promise<void>;
+  addTask: (task: Omit<Task, 'id' | 'userId'>) => Promise<string | undefined>;
   updateTask: (id: string, task: Partial<Task>) => Promise<void>;
   deleteTask: (id: string) => Promise<void>;
 
@@ -275,6 +275,7 @@ export const useStore = create<AppStore>()((set, get) => ({
     try {
       const taskId = await firebaseService.addTask(userId, task);
       set((state) => ({ tasks: [...state.tasks, { ...task, id: taskId, userId }] }));
+      return taskId;
     } catch (error) {
       console.error('Error adding task:', error);
     }

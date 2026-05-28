@@ -16,10 +16,12 @@ import {
   Edit2,
   FileText,
   Layers3,
+  Lock,
   Maximize2,
   MessageSquare,
   Minimize2,
   MonitorUp,
+  MoreHorizontal,
   Play,
   Plus,
   RotateCcw,
@@ -28,6 +30,7 @@ import {
   Square,
   Trash2,
   TrendingUp,
+  Unlock,
   Zap,
   ZoomIn,
   ZoomOut,
@@ -75,7 +78,10 @@ import { Textarea } from '@/components/ui/textarea';
 import { Calendar as CalendarPicker } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 import { useStore } from '@/lib/store';
-import type { Task, TimeEntry, LiveUpdateNode } from '@/types';
+import type { Task, TimeEntry, LiveUpdateNode, JournalThread } from '@/types';
+import { CompletedOutliner } from '@/components/time-tracking/completed-outliner';
+import { MarkdownNotesRenderer } from '@/components/time-tracking/markdown-notes-renderer';
+import { getReflectionsOnly, compileUpdatesToMarkdown } from '@/components/time-tracking/completed-outliner-helpers';
 
 const getElapsedTime = (startTime: Date, currentTime: Date) => {
   const elapsed = Math.max(
@@ -114,6 +120,18 @@ const ROUTINE_TEMPLATES = [
   { name: 'Break', duration: 15, category: 'Personal', icon: Coffee },
 ];
 
+const THREAD_PALETTE: { color: string; hsl: string; bg: string; border: string; text: string }[] = [
+  { color: 'violet', hsl: 'hsl(263,70%,58%)',  bg: 'bg-violet-500/10',  border: 'border-violet-500/25',  text: 'text-violet-400' },
+  { color: 'cyan',   hsl: 'hsl(187,85%,43%)',  bg: 'bg-cyan-500/10',    border: 'border-cyan-500/25',    text: 'text-cyan-400' },
+  { color: 'emerald',hsl: 'hsl(152,60%,45%)',  bg: 'bg-emerald-500/10', border: 'border-emerald-500/25', text: 'text-emerald-400' },
+  { color: 'amber',  hsl: 'hsl(38,92%,50%)',   bg: 'bg-amber-500/10',   border: 'border-amber-500/25',   text: 'text-amber-400' },
+  { color: 'rose',   hsl: 'hsl(346,84%,61%)',  bg: 'bg-rose-500/10',    border: 'border-rose-500/25',    text: 'text-rose-400' },
+  { color: 'indigo', hsl: 'hsl(234,89%,63%)',  bg: 'bg-indigo-500/10',  border: 'border-indigo-500/25',  text: 'text-indigo-400' },
+];
+
+const getThreadPalette = (color: string) =>
+  THREAD_PALETTE.find((p) => p.color === color) ?? THREAD_PALETTE[0];
+
 const toLocalDateTimeInputValue = (date: Date) => {
   const year = date.getFullYear();
   const month = `${date.getMonth() + 1}`.padStart(2, '0');
@@ -123,143 +141,7 @@ const toLocalDateTimeInputValue = (date: Date) => {
   return `${year}-${month}-${day}T${hours}:${minutes}`;
 };
 
-const MarkdownNotesRenderer = ({ notes }: { notes: string }) => {
-  if (!notes) return null;
 
-  const hasMarkdown = notes.includes('###') || notes.includes('**') || notes.includes('- ') || notes.includes('- [');
-  if (!hasMarkdown) {
-    return (
-      <p className="whitespace-pre-wrap text-[11px] font-medium italic leading-relaxed text-foreground/80">
-        {notes}
-      </p>
-    );
-  }
-
-  const lines = notes.split('\n');
-
-  return (
-    <div className="space-y-2 text-start select-text cursor-text">
-      {lines.map((line, index) => {
-        const trimmed = line.trim();
-        if (!trimmed) return <div key={index} className="h-1" />;
-
-        const leadingSpaces = line.match(/^\s*/)?.[0].length || 0;
-        const indentLevel = Math.floor(leadingSpaces / 2);
-        const paddingLeft = indentLevel > 0 ? `${indentLevel * 1.25}rem` : '0px';
-
-        if (trimmed.startsWith('###')) {
-          const text = trimmed.replace(/^###\s*/, '');
-          return (
-            <h4
-              key={index}
-              style={{ paddingLeft }}
-              className="text-[10px] font-black uppercase tracking-[0.2em] text-primary mt-4 mb-2 flex items-center gap-1.5"
-            >
-              <Sparkles className="h-3.5 w-3.5 text-primary animate-pulse" />
-              {text}
-            </h4>
-          );
-        }
-
-        if (trimmed.startsWith('**') && trimmed.endsWith('**:')) {
-          const text = trimmed.replace(/^\*\*\s*/, '').replace(/\s*\*\*:\s*$/, '');
-          const phaseColors: Record<string, string> = {
-            'Deep Work': 'bg-purple-500/10 text-purple-500 border-purple-500/20',
-            'Planning': 'bg-cyan-500/10 text-cyan-500 border-cyan-500/20',
-            'Coding': 'bg-indigo-500/10 text-indigo-500 border-indigo-500/20',
-            'Debugging': 'bg-orange-500/10 text-orange-500 border-orange-500/20',
-            'Break': 'bg-amber-500/10 text-amber-500 border-amber-500/20'
-          };
-          const badgeStyle = phaseColors[text] || 'bg-muted/30 text-muted-foreground/80';
-
-          return (
-            <div key={index} style={{ paddingLeft }} className="mt-3 block">
-              <Badge variant="outline" className={cn("h-5 text-[8px] font-black uppercase tracking-widest px-2.5 border-current bg-background/50", badgeStyle)}>
-                {text}
-              </Badge>
-            </div>
-          );
-        }
-
-        const todoMatch = trimmed.match(/^-\s*\[\s*([ xX])\s*\]\s*(.*)/);
-        if (todoMatch) {
-          const isDone = todoMatch[1].toLowerCase() === 'x';
-          const rest = todoMatch[2].trim();
-
-          const timeBadgeMatch = rest.match(/^`\[([\d:]+)\]`\s*(.*)/) || rest.match(/^\[([\d:]+)\]\s*(.*)/);
-          const timeBadge = timeBadgeMatch ? timeBadgeMatch[1] : null;
-          const content = timeBadgeMatch ? timeBadgeMatch[2] : rest;
-
-          return (
-            <div
-              key={index}
-              style={{ paddingLeft: `calc(${paddingLeft} + 0.5rem)` }}
-              className={cn(
-                "flex items-start gap-2.5 py-0.5 text-[11px] font-semibold leading-relaxed text-foreground/85",
-                isDone && "line-through text-muted-foreground/50 italic"
-              )}
-            >
-              <div
-                className={cn(
-                  "mt-0.5 h-3.5 w-3.5 rounded border transition-colors flex items-center justify-center shrink-0",
-                  isDone
-                    ? "bg-primary border-primary text-primary-foreground"
-                    : "border-primary/30 bg-background"
-                )}
-              >
-                {isDone && <CheckCircle2 className="h-2.5 w-2.5 stroke-[3]" />}
-              </div>
-              <div className="min-w-0">
-                {timeBadge && (
-                  <Badge variant="outline" className="h-4 border-primary/10 bg-muted/20 text-[8px] font-black text-primary/65 mr-1.5 px-1.5 py-0 tabular-nums">
-                    {timeBadge}
-                  </Badge>
-                )}
-                {content}
-              </div>
-            </div>
-          );
-        }
-
-        if (trimmed.startsWith('-')) {
-          const rest = trimmed.replace(/^-\s*/, '').trim();
-
-          const timeBadgeMatch = rest.match(/^`\[([\d:]+)\]`\s*(.*)/) || rest.match(/^\[([\d:]+)\]\s*(.*)/);
-          const timeBadge = timeBadgeMatch ? timeBadgeMatch[1] : null;
-          const content = timeBadgeMatch ? timeBadgeMatch[2] : rest;
-
-          return (
-            <div
-              key={index}
-              style={{ paddingLeft: `calc(${paddingLeft} + 0.5rem)` }}
-              className="flex items-start gap-2.5 py-0.5 text-[11px] font-semibold leading-relaxed text-foreground/85"
-            >
-              <div className="mt-2 h-1.5 w-1.5 rounded-full bg-primary/45 shrink-0" />
-              <div className="min-w-0">
-                {timeBadge && (
-                  <Badge variant="outline" className="h-4 border-primary/10 bg-muted/20 text-[8px] font-black text-primary/65 mr-1.5 px-1.5 py-0 tabular-nums">
-                    {timeBadge}
-                  </Badge>
-                )}
-                {content}
-              </div>
-            </div>
-          );
-        }
-
-        return (
-          <p
-            key={index}
-            style={{ paddingLeft }}
-            className="text-[11px] font-semibold leading-relaxed text-foreground/75"
-          >
-            {line}
-          </p>
-        );
-      })}
-    </div>
-  );
-};
 
 export default function TimeTrackingPage() {
   const router = useRouter();
@@ -323,6 +205,20 @@ export default function TimeTrackingPage() {
   const [isTodoMode, setIsTodoMode] = useState<Record<string, boolean>>({});
   const [indentLevels, setIndentLevels] = useState<Record<string, number>>({});
   const [expandedJournals, setExpandedJournals] = useState<Record<string, boolean>>({});
+  const [editingNodeId, setEditingNodeId] = useState<{ entryId: string; nodeId: string } | null>(null);
+  const [editNodeText, setEditNodeText] = useState('');
+  const [openNodeMenu, setOpenNodeMenu] = useState<string | null>(null);
+
+  // Thread state (keyed by TimeEntry ID)
+  const [activeThreadIds, setActiveThreadIds] = useState<Record<string, string>>({});
+  const [threadInputNames, setThreadInputNames] = useState<Record<string, string>>({});
+  const [showAddThread, setShowAddThread] = useState<Record<string, boolean>>({});
+  const [viewingThreadId, setViewingThreadId] = useState<Record<string, string | 'all'>>({});
+  const [viewingNotesMode, setViewingNotesMode] = useState<Record<string, 'outliner' | 'reflections'>>({});
+
+  // Dependency/Blocker state
+  const [unlockedNodes, setUnlockedNodes] = useState<Record<string, boolean>>({});
+  const [isSelectingBlocker, setIsSelectingBlocker] = useState<string | null>(null);
 
   const handleAddLiveUpdate = async (entryId: string) => {
     const text = inputTexts[entryId]?.trim();
@@ -358,6 +254,7 @@ export default function TimeTrackingPage() {
       completed: type === 'todo' ? false : undefined,
       phase,
       type,
+      threadId: activeThreadIds[entryId] || undefined,
     };
 
     const nextUpdates = [...currentUpdates, newNode];
@@ -371,12 +268,44 @@ export default function TimeTrackingPage() {
     const entry = timeEntries.find((e) => e.id === entryId);
     if (!entry || !entry.liveUpdates) return;
 
-    const nextUpdates = entry.liveUpdates.map((node) => {
+    const nodeToToggle = entry.liveUpdates.find((n) => n.id === nodeId);
+    if (!nodeToToggle) return;
+
+    const isNowCompleted = !nodeToToggle.completed;
+
+    let nextUpdates = entry.liveUpdates.map((node) => {
       if (node.id === nodeId) {
         return { ...node, completed: !node.completed };
       }
       return node;
     });
+
+    if (isNowCompleted) {
+      // Find any nodes blocked by this node
+      const blockedNodes = entry.liveUpdates.filter((n) => n.blockedBy === nodeId);
+      if (blockedNodes.length > 0) {
+        // Trigger local unlock animation
+        blockedNodes.forEach((n) => {
+          setUnlockedNodes((prev) => ({ ...prev, [n.id]: true }));
+          setTimeout(() => {
+            setUnlockedNodes((prev) => {
+              const next = { ...prev };
+              delete next[n.id];
+              return next;
+            });
+          }, 1500);
+        });
+
+        // Clear blockedBy database field
+        nextUpdates = nextUpdates.map((node) => {
+          if (node.blockedBy === nodeId) {
+            const { blockedBy, ...rest } = node;
+            return rest as LiveUpdateNode;
+          }
+          return node;
+        });
+      }
+    }
 
     await updateTimeEntry(entryId, { liveUpdates: nextUpdates });
   };
@@ -385,35 +314,193 @@ export default function TimeTrackingPage() {
     const entry = timeEntries.find((e) => e.id === entryId);
     if (!entry || !entry.liveUpdates) return;
 
-    const nodesToKeep = entry.liveUpdates.filter(
-      (node) => node.id !== nodeId && node.parentId !== nodeId
-    );
+    const nodesToKeep = entry.liveUpdates
+      .filter((node) => node.id !== nodeId && node.parentId !== nodeId)
+      .map((node) => {
+        if (node.blockedBy === nodeId) {
+          const { blockedBy, ...rest } = node;
+          return rest as LiveUpdateNode;
+        }
+        return node;
+      });
 
     await updateTimeEntry(entryId, { liveUpdates: nodesToKeep });
   };
 
-  const compileUpdatesToMarkdown = (updates: LiveUpdateNode[]) => {
-    const phases: Record<string, LiveUpdateNode[]> = {};
-    updates.forEach((node) => {
-      const phase = node.phase || 'General Work';
-      if (!phases[phase]) {
-        phases[phase] = [];
+  const handleIndentNode = async (entryId: string, nodeId: string, direction: 'indent' | 'outdent') => {
+    const entry = timeEntries.find((e) => e.id === entryId);
+    if (!entry || !entry.liveUpdates) return;
+
+    const nextUpdates = entry.liveUpdates.map((node) => {
+      if (node.id === nodeId) {
+        const currentIndent = node.indent || 0;
+        const newIndent =
+          direction === 'indent'
+            ? Math.min(2, currentIndent + 1)
+            : Math.max(0, currentIndent - 1);
+        return { ...node, indent: newIndent };
       }
-      phases[phase].push(node);
+      return node;
     });
 
-    let markdown = '### Chronos Session Log\n';
-    Object.entries(phases).forEach(([phaseName, nodes]) => {
-      markdown += `\n**${phaseName}**:\n`;
-      nodes.forEach((node) => {
-        const indentSpaces = '  '.repeat(node.indent || 0);
-        const badge = `\`[${node.elapsedTime}]\``;
-        const bullet = node.type === 'todo' ? (node.completed ? '- [x]' : '- [ ]') : '-';
-        markdown += `${indentSpaces}${bullet} ${badge} ${node.text}\n`;
-      });
-    });
-    return markdown;
+    await updateTimeEntry(entryId, { liveUpdates: nextUpdates });
   };
+
+  const handleStartEditNode = (entryId: string, nodeId: string, currentText: string) => {
+    setEditingNodeId({ entryId, nodeId });
+    setEditNodeText(currentText);
+  };
+
+  const handleSaveEditNode = async () => {
+    if (!editingNodeId) return;
+    const { entryId, nodeId } = editingNodeId;
+    const entry = timeEntries.find((e) => e.id === entryId);
+    if (!entry || !entry.liveUpdates) return;
+
+    const text = editNodeText.trim();
+    if (!text) {
+      setEditingNodeId(null);
+      setEditNodeText('');
+      return;
+    }
+
+    const nextUpdates = entry.liveUpdates.map((node) => {
+      if (node.id === nodeId) return { ...node, text };
+      return node;
+    });
+
+    await updateTimeEntry(entryId, { liveUpdates: nextUpdates });
+    setEditingNodeId(null);
+    setEditNodeText('');
+  };
+
+  const handleCancelEditNode = () => {
+    setEditingNodeId(null);
+    setEditNodeText('');
+  };
+
+  // ─── Thread Handlers ───────────────────────────────────────────────────────
+
+  const handleAddThread = async (entryId: string) => {
+    const name = threadInputNames[entryId]?.trim();
+    if (!name) return;
+
+    const entry = timeEntries.find((e) => e.id === entryId);
+    if (!entry) return;
+
+    const existingThreads = entry.threads || [];
+    const colorIndex = existingThreads.length % THREAD_PALETTE.length;
+    const newThread: JournalThread = {
+      id: `thread-${Date.now()}`,
+      name,
+      color: THREAD_PALETTE[colorIndex].color,
+      status: 'active',
+      createdAt: getElapsedTime(entry.startTime, currentTime),
+    };
+
+    await updateTimeEntry(entryId, { threads: [...existingThreads, newThread] });
+    setActiveThreadIds((prev) => ({ ...prev, [entryId]: newThread.id }));
+    setViewingThreadId((prev) => ({ ...prev, [entryId]: newThread.id }));
+    setThreadInputNames((prev) => ({ ...prev, [entryId]: '' }));
+    setShowAddThread((prev) => ({ ...prev, [entryId]: false }));
+  };
+
+  const handleDeleteThread = async (entryId: string, threadId: string) => {
+    const entry = timeEntries.find((e) => e.id === entryId);
+    if (!entry) return;
+
+    const nextThreads = (entry.threads || []).filter((t) => t.id !== threadId);
+    // Un-assign nodes that belonged to the deleted thread
+    const nextUpdates = (entry.liveUpdates || []).map((node) =>
+      node.threadId === threadId ? { ...node, threadId: undefined } : node
+    );
+
+    await updateTimeEntry(entryId, { threads: nextThreads, liveUpdates: nextUpdates });
+
+    if (activeThreadIds[entryId] === threadId) {
+      setActiveThreadIds((prev) => ({ ...prev, [entryId]: '' }));
+    }
+    if (viewingThreadId[entryId] === threadId) {
+      setViewingThreadId((prev) => ({ ...prev, [entryId]: 'all' }));
+    }
+  };
+
+  const handleCycleThreadStatus = async (entryId: string, threadId: string) => {
+    const entry = timeEntries.find((e) => e.id === entryId);
+    if (!entry) return;
+    const cycle: JournalThread['status'][] = ['active', 'paused', 'blocked'];
+    const nextThreads = (entry.threads || []).map((t) => {
+      if (t.id !== threadId) return t;
+      const idx = cycle.indexOf(t.status);
+      return { ...t, status: cycle[(idx + 1) % cycle.length] };
+    });
+    await updateTimeEntry(entryId, { threads: nextThreads });
+  };
+
+  const handleMoveNodeToThread = async (entryId: string, nodeId: string, threadId: string | undefined) => {
+    const entry = timeEntries.find((e) => e.id === entryId);
+    if (!entry || !entry.liveUpdates) return;
+    const nextUpdates = entry.liveUpdates.map((node) =>
+      node.id === nodeId ? { ...node, threadId } : node
+    );
+    await updateTimeEntry(entryId, { liveUpdates: nextUpdates });
+    setOpenNodeMenu(null);
+  };
+
+  const handleToggleNodeType = async (entryId: string, nodeId: string) => {
+    const entry = timeEntries.find((e) => e.id === entryId);
+    if (!entry || !entry.liveUpdates) return;
+
+    const nextUpdates = entry.liveUpdates.map((node) => {
+      if (node.id === nodeId) {
+        const nextType: 'todo' | 'note' = node.type === 'todo' ? 'note' : 'todo';
+        return {
+          ...node,
+          type: nextType,
+          completed: nextType === 'todo' ? false : undefined,
+        };
+      }
+      return node;
+    });
+
+    await updateTimeEntry(entryId, { liveUpdates: nextUpdates });
+  };
+
+  const wouldCreateCircularDependency = (
+    updates: LiveUpdateNode[],
+    nodeId: string,
+    potentialBlockerId: string
+  ): boolean => {
+    let currentId: string | undefined = potentialBlockerId;
+    const visited = new Set<string>();
+    while (currentId) {
+      if (currentId === nodeId) return true;
+      if (visited.has(currentId)) return true;
+      visited.add(currentId);
+      const nextNode = updates.find((n) => n.id === currentId);
+      currentId = nextNode?.blockedBy;
+    }
+    return false;
+  };
+
+  const handleSetBlocker = async (entryId: string, nodeId: string, blockerNodeId: string | null) => {
+    const entry = timeEntries.find((e) => e.id === entryId);
+    if (!entry || !entry.liveUpdates) return;
+
+    const nextUpdates = entry.liveUpdates.map((node) => {
+      if (node.id === nodeId) {
+        return {
+          ...node,
+          blockedBy: blockerNodeId || undefined,
+        };
+      }
+      return node;
+    });
+
+    await updateTimeEntry(entryId, { liveUpdates: nextUpdates });
+  };
+
+
 
   useEffect(() => {
     const timerId = window.setInterval(() => setCurrentTime(new Date()), 1000);
@@ -482,14 +569,7 @@ export default function TimeTrackingPage() {
     setEditingEntryId(null);
     setStoppingEntryId(id);
 
-    // Auto-compile live updates to markdown notes if present
-    let finalNotes = entry?.notes || '';
-    if (entry?.liveUpdates && entry.liveUpdates.length > 0) {
-      const compiledMarkdown = compileUpdatesToMarkdown(entry.liveUpdates);
-      finalNotes = finalNotes ? `${finalNotes}\n\n${compiledMarkdown}` : compiledMarkdown;
-    }
-
-    setSessionSummary(finalNotes);
+    setSessionSummary(getReflectionsOnly(entry?.notes || ''));
     setSessionCategory(entry?.category || '');
     setSessionProjectId(entry?.projectId || '');
     setSessionTaskId(entry?.taskId || '');
@@ -524,8 +604,16 @@ export default function TimeTrackingPage() {
         ? Math.max(0, Math.floor((nextEnd.getTime() - nextStart.getTime()) / 60000))
         : undefined;
 
+      // Merge reflections with compiled session log
+      const compiledLog = currentEntry.liveUpdates && currentEntry.liveUpdates.length > 0
+        ? compileUpdatesToMarkdown(currentEntry.liveUpdates, currentEntry.threads)
+        : null;
+      const mergedNotes = sessionSummary && compiledLog
+        ? `${sessionSummary}\n\n${compiledLog}`
+        : sessionSummary || compiledLog || '';
+
       await updateTimeEntry(editingEntryId, {
-        notes: sessionSummary,
+        notes: mergedNotes,
         category: sessionCategory || currentEntry.category,
         taskId: sessionTaskId || undefined,
         projectId: sessionProjectId || undefined,
@@ -571,9 +659,17 @@ export default function TimeTrackingPage() {
     }
 
     if (stoppingEntryId) {
-      await stopTimeEntry(stoppingEntryId, sessionSummary);
+      const stoppingEntry = timeEntries.find((entry) => entry.id === stoppingEntryId);
+      // Merge user reflections with compiled session log on stop
+      const compiledLog = stoppingEntry?.liveUpdates && stoppingEntry.liveUpdates.length > 0
+        ? compileUpdatesToMarkdown(stoppingEntry.liveUpdates, stoppingEntry.threads)
+        : null;
+      const finalNotes = sessionSummary && compiledLog
+        ? `${sessionSummary}\n\n${compiledLog}`
+        : sessionSummary || compiledLog || '';
+      await stopTimeEntry(stoppingEntryId, finalNotes);
       await updateTimeEntry(stoppingEntryId, {
-        category: sessionCategory || timeEntries.find((entry) => entry.id === stoppingEntryId)?.category,
+        category: sessionCategory || stoppingEntry?.category,
         taskId: sessionTaskId || undefined,
         projectId: sessionProjectId || undefined,
       });
@@ -592,7 +688,8 @@ export default function TimeTrackingPage() {
     setPendingManualEntry(null);
     setStoppingEntryId(null);
     setEditingEntryId(entry.id);
-    setSessionSummary(entry.notes || '');
+    // Prefill only the user's reflections, not the compiled session log
+    setSessionSummary(getReflectionsOnly(entry.notes || ''));
     setSessionCategory(entry.category || '');
     setSessionProjectId(entry.projectId || '');
     setSessionTaskId(entry.taskId || '');
@@ -883,6 +980,7 @@ export default function TimeTrackingPage() {
   const activeEntryBeingEdited = editingEntryId
     ? timeEntries.find((entry) => entry.id === editingEntryId) || null
     : null;
+  const previewEntry = activeEntryBeingEdited || activeEntryBeingStopped;
   const summarySearchTasks = useMemo(() => {
     const selectedProjectTasks = tasks.filter((task) =>
       sessionProjectId ? task.projectId === sessionProjectId : !task.projectId
@@ -1589,14 +1687,199 @@ export default function TimeTrackingPage() {
                                   </div>
                                 </div>
 
+                                {/* ─── Thread Lanes Bar ─────────────────────────────── */}
+                                {(() => {
+                                  const threads = entry.threads || [];
+                                  const currentView = viewingThreadId[entry.id] || 'all';
+                                  const activeInput = threadInputNames[entry.id] || '';
+                                  const isAdding = showAddThread[entry.id];
+                                  const activeLoggingThread = activeThreadIds[entry.id] || '';
+
+                                  const statusDot: Record<JournalThread['status'], string> = {
+                                    active: 'bg-emerald-400 animate-pulse',
+                                    paused: 'bg-amber-400',
+                                    blocked: 'bg-rose-400',
+                                  };
+                                  const statusLabel: Record<JournalThread['status'], string> = {
+                                    active: 'Active',
+                                    paused: 'Paused',
+                                    blocked: 'Blocked',
+                                  };
+
+                                  if (threads.length === 0 && !isAdding) {
+                                    return (
+                                      <button
+                                        type="button"
+                                        onClick={() => setShowAddThread((p) => ({ ...p, [entry.id]: true }))}
+                                        className="flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.2em] text-muted-foreground/40 hover:text-primary/70 transition-colors py-1"
+                                      >
+                                        <Plus className="h-3 w-3" />
+                                        Add work thread
+                                      </button>
+                                    );
+                                  }
+
+                                  return (
+                                    <div className="space-y-3">
+                                      {/* Thread pill tabs */}
+                                      <div className="flex flex-wrap items-center gap-1.5">
+                                        {/* All tab */}
+                                        <button
+                                          type="button"
+                                          onClick={() => setViewingThreadId((p) => ({ ...p, [entry.id]: 'all' }))}
+                                          className={cn(
+                                            "px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all border",
+                                            currentView === 'all'
+                                              ? "bg-primary/10 border-primary/20 text-primary"
+                                              : "border-transparent text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/30"
+                                          )}
+                                        >
+                                          All
+                                          <span className="ml-1 opacity-60">{entry.liveUpdates?.length || 0}</span>
+                                        </button>
+
+                                        {threads.map((thread) => {
+                                          const pal = getThreadPalette(thread.color);
+                                          const isViewing = currentView === thread.id;
+                                          const isLogging = activeLoggingThread === thread.id;
+                                          const nodeCount = (entry.liveUpdates || []).filter((n) => n.threadId === thread.id).length;
+                                          return (
+                                            <div key={thread.id} className="group/thread relative flex items-center">
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  setViewingThreadId((p) => ({ ...p, [entry.id]: thread.id }));
+                                                  setActiveThreadIds((p) => ({ ...p, [entry.id]: thread.id }));
+                                                }}
+                                                className={cn(
+                                                  "flex items-center gap-1.5 pl-2.5 pr-6 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider border transition-all",
+                                                  isViewing
+                                                    ? `${pal.bg} ${pal.border} ${pal.text}`
+                                                    : "border-transparent text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/30"
+                                                )}
+                                              >
+                                                {/* Status dot — click cycles status */}
+                                                <button
+                                                  type="button"
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    void handleCycleThreadStatus(entry.id, thread.id);
+                                                  }}
+                                                  title={`Status: ${statusLabel[thread.status]} — click to cycle`}
+                                                  className="h-2 w-2 rounded-full shrink-0 transition-all"
+                                                >
+                                                  <span className={cn("block h-2 w-2 rounded-full", statusDot[thread.status])} />
+                                                </button>
+                                                {thread.name}
+                                                <span className="opacity-50">{nodeCount}</span>
+                                                {isLogging && (
+                                                  <span className="absolute right-4 h-1.5 w-1.5 rounded-full bg-current animate-ping" />
+                                                )}
+                                              </button>
+                                              {/* × delete thread */}
+                                              <button
+                                                type="button"
+                                                onClick={() => void handleDeleteThread(entry.id, thread.id)}
+                                                title="Remove thread"
+                                                className="absolute right-1 opacity-0 group-hover/thread:opacity-100 h-4 w-4 flex items-center justify-center rounded text-muted-foreground/60 hover:text-destructive transition-all"
+                                              >
+                                                <span className="text-[10px] leading-none">&times;</span>
+                                              </button>
+                                            </div>
+                                          );
+                                        })}
+
+                                        {/* + Thread button / input */}
+                                        {isAdding ? (
+                                          <input
+                                            autoFocus
+                                            value={activeInput}
+                                            onChange={(e) => setThreadInputNames((p) => ({ ...p, [entry.id]: e.target.value }))}
+                                            onKeyDown={(e) => {
+                                              if (e.key === 'Enter') { e.preventDefault(); void handleAddThread(entry.id); }
+                                              if (e.key === 'Escape') setShowAddThread((p) => ({ ...p, [entry.id]: false }));
+                                            }}
+                                            onBlur={() => void handleAddThread(entry.id)}
+                                            placeholder="Thread name…"
+                                            className="h-7 w-28 rounded-lg border border-primary/20 bg-background/60 px-2.5 text-[10px] font-semibold outline-none focus:border-primary/40 placeholder:text-muted-foreground/35 transition-colors"
+                                          />
+                                        ) : (
+                                          <button
+                                            type="button"
+                                            onClick={() => setShowAddThread((p) => ({ ...p, [entry.id]: true }))}
+                                            className="flex items-center gap-1 px-2 py-1 rounded-lg border border-dashed border-primary/15 text-[9px] font-black uppercase tracking-wider text-muted-foreground/40 hover:border-primary/30 hover:text-primary/60 transition-all"
+                                          >
+                                            <Plus className="h-2.5 w-2.5" />
+                                            Thread
+                                          </button>
+                                        )}
+                                      </div>
+
+                                      {/* Thread Timeline Strip */}
+                                      {threads.length > 0 && (entry.liveUpdates?.length || 0) > 0 && (() => {
+                                        const total = entry.liveUpdates!.length;
+                                        const threadSegments = threads.map((t) => ({
+                                          thread: t,
+                                          count: entry.liveUpdates!.filter((n) => n.threadId === t.id).length,
+                                        })).filter((s) => s.count > 0);
+                                        const unassigned = entry.liveUpdates!.filter((n) => !n.threadId).length;
+
+                                        return (
+                                          <div className="space-y-1">
+                                            <p className="text-[8px] font-black uppercase tracking-[0.2em] text-muted-foreground/35">Thread Timeline</p>
+                                            <div className="flex h-1.5 w-full overflow-hidden rounded-full gap-px">
+                                              {threadSegments.map(({ thread, count }) => {
+                                                const pal = getThreadPalette(thread.color);
+                                                return (
+                                                  <Popover key={thread.id}>
+                                                    <PopoverTrigger asChild>
+                                                      <div
+                                                        title={`${thread.name}: ${count} node${count > 1 ? 's' : ''}`}
+                                                        style={{ width: `${(count / total) * 100}%`, backgroundColor: pal.hsl, opacity: 0.7 }}
+                                                        className="h-full cursor-pointer hover:opacity-100 transition-opacity rounded-full"
+                                                      />
+                                                    </PopoverTrigger>
+                                                    <PopoverContent side="top" className="w-40 p-2.5 rounded-xl border-primary/10 bg-background/95 backdrop-blur-xl shadow-xl text-[10px]">
+                                                      <div className="flex items-center gap-2 mb-1">
+                                                        <span className={cn("h-2 w-2 rounded-full shrink-0", pal.bg, pal.border, 'border')} style={{ backgroundColor: pal.hsl }} />
+                                                        <span className={cn("font-black", pal.text)}>{thread.name}</span>
+                                                      </div>
+                                                      <p className="text-muted-foreground/60 font-semibold">{count} node{count > 1 ? 's' : ''} · {Math.round((count / total) * 100)}% of session</p>
+                                                      <p className="text-muted-foreground/40 font-semibold mt-0.5">Since {thread.createdAt}</p>
+                                                    </PopoverContent>
+                                                  </Popover>
+                                                );
+                                              })}
+                                              {unassigned > 0 && (
+                                                <div
+                                                  title={`Unthreaded: ${unassigned} node${unassigned > 1 ? 's' : ''}`}
+                                                  style={{ width: `${(unassigned / total) * 100}%` }}
+                                                  className="h-full bg-muted/40 rounded-full"
+                                                />
+                                              )}
+                                            </div>
+                                          </div>
+                                        );
+                                      })()}
+                                    </div>
+                                  );
+                                })()}
+
                                 {/* 3. Live Indented Milestone Tree */}
                                 {entry.liveUpdates && entry.liveUpdates.length > 0 ? (
                                   <div className="relative border-l border-primary/10 ml-3 pl-4 py-2 space-y-4">
-                                    {entry.liveUpdates.map((node) => {
+                                    {entry.liveUpdates
+                                      .filter((node) => {
+                                        const view = viewingThreadId[entry.id] || 'all';
+                                        if (view === 'all') return true;
+                                        return node.threadId === view;
+                                      })
+                                      .map((node) => {
                                       const isTodo = node.type === 'todo';
                                       const isDone = node.completed === true;
+                                      const nodeThread = (entry.threads || []).find((t) => t.id === node.threadId);
+                                      const nodePal = nodeThread ? getThreadPalette(nodeThread.color) : null;
                                       
-                                      // Custom colors per phase to visually differentiate tree nodes
                                       const phaseColors: Record<string, string> = {
                                         'Deep Work': 'bg-purple-500/10 text-purple-500 border-purple-500/20',
                                         'Planning': 'bg-cyan-500/10 text-cyan-500 border-cyan-500/20',
@@ -1606,14 +1889,28 @@ export default function TimeTrackingPage() {
                                       };
                                       const phaseColor = phaseColors[node.phase || ''] || 'bg-muted/30 text-muted-foreground/80';
 
+                                      const isEditingThisNode =
+                                        editingNodeId?.entryId === entry.id &&
+                                        editingNodeId?.nodeId === node.id;
+
+                                      const blockerNode = node.blockedBy ? (entry.liveUpdates || []).find((n) => n.id === node.blockedBy) : null;
+                                      const isCurrentlyBlocked = !!blockerNode && !blockerNode.completed;
+
                                       return (
                                         <div
                                           key={node.id}
                                           style={{
                                             paddingLeft: `${(node.indent || 0) * 1.25}rem`,
                                           }}
-                                          className="group relative flex items-start justify-between gap-4 py-1 transition-all"
+                                          className="group relative flex items-start justify-between gap-2 py-1 transition-all"
                                         >
+                                          {/* Thread color accent bar on left edge */}
+                                          {nodePal && (
+                                            <div
+                                              className="absolute -left-4 top-1.5 bottom-1.5 w-0.5 rounded-full opacity-60"
+                                              style={{ backgroundColor: nodePal.hsl }}
+                                            />
+                                          )}
                                           {/* Visual Hierarchy Connector Line Indicator */}
                                           {(node.indent || 0) > 0 && (
                                             <div 
@@ -1622,8 +1919,19 @@ export default function TimeTrackingPage() {
                                             />
                                           )}
 
-                                          <div className="flex items-start gap-2.5 min-w-0">
-                                            {isTodo ? (
+                                          <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                                            {isCurrentlyBlocked ? (
+                                              <div 
+                                                className="mt-0.5 h-4 w-4 flex items-center justify-center text-amber-500 shrink-0 cursor-not-allowed animate-pulse"
+                                                title={`Blocked by: ${blockerNode?.text}`}
+                                              >
+                                                <Lock className="h-3.5 w-3.5 stroke-[2.5]" />
+                                              </div>
+                                            ) : unlockedNodes[node.id] ? (
+                                              <div className="mt-0.5 h-4 w-4 flex items-center justify-center text-emerald-400 shrink-0 animate-bounce">
+                                                <Sparkles className="h-3.5 w-3.5 animate-pulse" />
+                                              </div>
+                                            ) : isTodo ? (
                                               <button
                                                 type="button"
                                                 onClick={() => handleToggleUpdateCompletion(entry.id, node.id)}
@@ -1640,14 +1948,47 @@ export default function TimeTrackingPage() {
                                               <div className="mt-2 h-1.5 w-1.5 rounded-full bg-primary/45 shrink-0" />
                                             )}
 
-                                            <div className="min-w-0">
-                                              <p className={cn(
-                                                "text-xs font-semibold leading-relaxed break-words text-foreground/85",
-                                                isDone && "line-through text-muted-foreground/50 italic"
-                                              )}>
-                                                {node.text}
-                                              </p>
+                                            <div className="min-w-0 flex-1">
+                                              {isEditingThisNode ? (
+                                                <input
+                                                  autoFocus
+                                                  value={editNodeText}
+                                                  onChange={(e) => setEditNodeText(e.target.value)}
+                                                  onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') {
+                                                      e.preventDefault();
+                                                      void handleSaveEditNode();
+                                                    }
+                                                    if (e.key === 'Escape') handleCancelEditNode();
+                                                  }}
+                                                  onBlur={() => void handleSaveEditNode()}
+                                                  className="w-full bg-transparent text-xs font-semibold text-foreground/90 border-b border-primary/40 focus:border-primary/70 outline-none pb-0.5 leading-relaxed caret-primary placeholder:text-muted-foreground/40 transition-colors"
+                                                />
+                                              ) : (
+                                                <p
+                                                  className={cn(
+                                                    "text-xs font-semibold leading-relaxed break-words text-foreground/85 cursor-text select-text transition-colors",
+                                                    isDone && "line-through text-muted-foreground/50 italic",
+                                                    isCurrentlyBlocked && "text-muted-foreground/40 italic cursor-not-allowed"
+                                                  )}
+                                                  onDoubleClick={() => {
+                                                    if (!isCurrentlyBlocked) {
+                                                      handleStartEditNode(entry.id, node.id, node.text);
+                                                    }
+                                                  }}
+                                                  title={isCurrentlyBlocked ? `Blocked by: ${blockerNode?.text}` : "Double-click to edit"}
+                                                >
+                                                  {node.text}
+                                                </p>
+                                              )}
                                               
+                                              {isCurrentlyBlocked && blockerNode && (
+                                                <div className="mt-1 flex items-center gap-1 text-[9px] font-semibold text-amber-500/70 animate-in fade-in slide-in-from-top-1">
+                                                  <Lock className="h-2.5 w-2.5 shrink-0" />
+                                                  <span>Waiting for: {blockerNode.text}</span>
+                                                </div>
+                                              )}
+
                                               <div className="mt-1 flex flex-wrap items-center gap-2 text-[9px] font-black uppercase tracking-wider">
                                                 <span className="text-primary/50 tabular-nums">
                                                   {node.elapsedTime}
@@ -1659,14 +2000,224 @@ export default function TimeTrackingPage() {
                                             </div>
                                           </div>
 
-                                          <Button
-                                            size="icon"
-                                            variant="ghost"
-                                            onClick={() => handleDeleteLiveUpdate(entry.id, node.id)}
-                                            className="opacity-0 group-hover:opacity-100 h-6 w-6 rounded-md hover:bg-destructive/10 hover:text-destructive transition-all shrink-0"
+                                          {/* Single ⋮ kebab — clean context menu on click */}
+                                          <Popover
+                                            open={openNodeMenu === `${entry.id}:${node.id}`}
+                                            onOpenChange={(open) => {
+                                              setOpenNodeMenu(open ? `${entry.id}:${node.id}` : null);
+                                              if (!open) {
+                                                setIsSelectingBlocker(null);
+                                              }
+                                            }}
                                           >
-                                            <Trash2 className="h-3.5 w-3.5" />
-                                          </Button>
+                                            <PopoverTrigger asChild>
+                                              <Button
+                                                size="icon"
+                                                variant="ghost"
+                                                type="button"
+                                                className="opacity-0 group-hover:opacity-100 h-6 w-6 rounded-lg text-muted-foreground/50 hover:text-foreground hover:bg-muted/40 transition-all duration-150 shrink-0"
+                                              >
+                                                <MoreHorizontal className="h-3.5 w-3.5" />
+                                              </Button>
+                                            </PopoverTrigger>
+
+                                            <PopoverContent
+                                              side="left"
+                                              align="center"
+                                              sideOffset={8}
+                                              className="w-48 p-1.5 rounded-2xl border-primary/10 bg-background/95 backdrop-blur-xl shadow-2xl"
+                                            >
+                                              {isSelectingBlocker === node.id ? (
+                                                <>
+                                                  <div className="flex items-center gap-1.5 px-2 py-1 mb-1.5 border-b border-primary/5">
+                                                    <button
+                                                      type="button"
+                                                      onClick={() => setIsSelectingBlocker(null)}
+                                                      className="rounded p-1 hover:bg-muted/40 text-muted-foreground hover:text-foreground transition-colors shrink-0"
+                                                    >
+                                                      <ChevronLeft className="h-3 w-3" />
+                                                    </button>
+                                                    <span className="text-[10px] font-black uppercase tracking-wider text-foreground/80">Select Blocker</span>
+                                                  </div>
+                                                  <div className="max-h-48 overflow-y-auto py-1 space-y-0.5">
+                                                    {(entry.liveUpdates || [])
+                                                      .filter((n) => {
+                                                        // Cannot block on self
+                                                        if (n.id === node.id) return false;
+                                                        // Cannot block on completed nodes
+                                                        if (n.completed) return false;
+                                                        // Prevent circular dependencies
+                                                        if (wouldCreateCircularDependency(entry.liveUpdates || [], node.id, n.id)) return false;
+                                                        return true;
+                                                      })
+                                                      .map((n) => (
+                                                        <button
+                                                          key={n.id}
+                                                          type="button"
+                                                          onClick={() => {
+                                                            void handleSetBlocker(entry.id, node.id, n.id);
+                                                            setIsSelectingBlocker(null);
+                                                            setOpenNodeMenu(null);
+                                                          }}
+                                                          className="flex w-full items-center gap-2 rounded-xl px-2.5 py-1.5 text-left text-[11px] font-semibold text-foreground/70 transition-colors hover:bg-muted/40 hover:text-foreground"
+                                                          title={n.text}
+                                                        >
+                                                          <span className="h-1.5 w-1.5 rounded-full bg-primary/40 shrink-0" />
+                                                          <span className="truncate">{n.text}</span>
+                                                        </button>
+                                                      ))}
+                                                    {(entry.liveUpdates || []).filter((n) => n.id !== node.id && !n.completed && !wouldCreateCircularDependency(entry.liveUpdates || [], node.id, n.id)).length === 0 && (
+                                                      <p className="text-[10px] text-muted-foreground/50 px-3 py-4 italic text-center leading-normal">
+                                                        No eligible blocker tasks found in this session.
+                                                      </p>
+                                                    )}
+                                                  </div>
+                                                </>
+                                              ) : (
+                                                <>
+                                                  {/* Hierarchy section */}
+                                                  <p className="px-3 pt-1 pb-0.5 text-[8px] font-black uppercase tracking-[0.2em] text-muted-foreground/40">Hierarchy</p>
+
+                                                  <button
+                                                    type="button"
+                                                    disabled={(node.indent || 0) === 0}
+                                                    onClick={() => {
+                                                      void handleIndentNode(entry.id, node.id, 'outdent');
+                                                      setOpenNodeMenu(null);
+                                                    }}
+                                                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-[11px] font-semibold text-foreground/70 transition-colors hover:bg-muted/40 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30"
+                                                  >
+                                                    <ChevronLeft className="h-3.5 w-3.5 text-primary/60 shrink-0" />
+                                                    Promote
+                                                    <span className="ml-auto text-[9px] font-black text-muted-foreground/30">Shift+Tab</span>
+                                                  </button>
+
+                                                  <button
+                                                    type="button"
+                                                    disabled={(node.indent || 0) >= 2}
+                                                    onClick={() => {
+                                                      void handleIndentNode(entry.id, node.id, 'indent');
+                                                      setOpenNodeMenu(null);
+                                                    }}
+                                                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-[11px] font-semibold text-foreground/70 transition-colors hover:bg-muted/40 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30"
+                                                  >
+                                                    <ChevronRight className="h-3.5 w-3.5 text-primary/60 shrink-0" />
+                                                    Demote
+                                                    <span className="ml-auto text-[9px] font-black text-muted-foreground/30">Tab</span>
+                                                  </button>
+
+                                                  <div className="my-1.5 border-t border-primary/5" />
+
+                                                  {/* Edit section */}
+                                                  <p className="px-3 pb-0.5 text-[8px] font-black uppercase tracking-[0.2em] text-muted-foreground/40">Node</p>
+
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                      handleStartEditNode(entry.id, node.id, node.text);
+                                                      setOpenNodeMenu(null);
+                                                    }}
+                                                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-[11px] font-semibold text-foreground/70 transition-colors hover:bg-muted/40 hover:text-foreground"
+                                                  >
+                                                    <Edit2 className="h-3.5 w-3.5 text-primary/60 shrink-0" />
+                                                    Edit text
+                                                    <span className="ml-auto text-[9px] font-black text-muted-foreground/30">Dbl-click</span>
+                                                  </button>
+
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                      void handleToggleNodeType(entry.id, node.id);
+                                                      setOpenNodeMenu(null);
+                                                    }}
+                                                    className={cn(
+                                                      "flex w-full items-center gap-3 rounded-xl px-3 py-2 text-[11px] font-semibold transition-colors",
+                                                      isTodo
+                                                        ? "text-emerald-500 hover:bg-emerald-500/10"
+                                                        : "text-foreground/70 hover:bg-muted/40 hover:text-foreground"
+                                                    )}
+                                                  >
+                                                    <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                                                    {isTodo ? 'Remove checklist' : 'Make checklist'}
+                                                  </button>
+
+                                                  {/* Move to thread section */}
+                                                  {(entry.threads || []).length > 0 && (
+                                                    <>
+                                                      <div className="my-1.5 border-t border-primary/5" />
+                                                      <p className="px-3 pb-0.5 text-[8px] font-black uppercase tracking-[0.2em] text-muted-foreground/40">Move to thread</p>
+
+                                                      {node.threadId && (
+                                                        <button
+                                                          type="button"
+                                                          onClick={() => void handleMoveNodeToThread(entry.id, node.id, undefined)}
+                                                          className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-[11px] font-semibold text-muted-foreground/50 transition-colors hover:bg-muted/40 hover:text-foreground"
+                                                        >
+                                                          <span className="h-2 w-2 rounded-full bg-muted/50 shrink-0" />
+                                                          Unassign
+                                                        </button>
+                                                      )}
+
+                                                      {(entry.threads || []).filter((t) => t.id !== node.threadId).map((t) => {
+                                                        const tp = getThreadPalette(t.color);
+                                                        return (
+                                                          <button
+                                                            key={t.id}
+                                                            type="button"
+                                                            onClick={() => void handleMoveNodeToThread(entry.id, node.id, t.id)}
+                                                            className={cn("flex w-full items-center gap-3 rounded-xl px-3 py-2 text-[11px] font-semibold transition-colors hover:bg-muted/40", tp.text)}
+                                                          >
+                                                            <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: tp.hsl }} />
+                                                            {t.name}
+                                                          </button>
+                                                        );
+                                                      })}
+                                                    </>
+                                                  )}
+
+                                                  <div className="my-1.5 border-t border-primary/5" />
+                                                  <p className="px-3 pb-0.5 text-[8px] font-black uppercase tracking-[0.2em] text-muted-foreground/40">Dependencies</p>
+
+                                                  {node.blockedBy ? (
+                                                    <button
+                                                      type="button"
+                                                      onClick={() => {
+                                                        void handleSetBlocker(entry.id, node.id, null);
+                                                        setOpenNodeMenu(null);
+                                                      }}
+                                                      className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-[11px] font-semibold text-amber-500 hover:bg-amber-500/10 transition-colors"
+                                                    >
+                                                      <Unlock className="h-3.5 w-3.5 shrink-0" />
+                                                      Remove blocker
+                                                    </button>
+                                                  ) : (
+                                                    <button
+                                                      type="button"
+                                                      onClick={() => setIsSelectingBlocker(node.id)}
+                                                      className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-[11px] font-semibold text-foreground/70 hover:bg-muted/40 hover:text-foreground transition-colors"
+                                                    >
+                                                      <Lock className="h-3.5 w-3.5 text-primary/60 shrink-0" />
+                                                      Block on...
+                                                    </button>
+                                                  )}
+
+                                                  <div className="my-1.5 border-t border-primary/5" />
+
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                      void handleDeleteLiveUpdate(entry.id, node.id);
+                                                      setOpenNodeMenu(null);
+                                                    }}
+                                                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-[11px] font-semibold text-destructive/70 transition-colors hover:bg-destructive/8 hover:text-destructive"
+                                                  >
+                                                    <Trash2 className="h-3.5 w-3.5 shrink-0" />
+                                                    Delete
+                                                  </button>
+                                                </>
+                                              )}
+                                            </PopoverContent>
+                                          </Popover>
                                         </div>
                                       );
                                     })}
@@ -1928,6 +2479,23 @@ export default function TimeTrackingPage() {
                               {entry.projectId && (
                                 <ProjectBadge projectId={entry.projectId} className="h-4 px-1.5 text-[8px]" />
                               )}
+                              {entry.threads && entry.threads.length > 0 && (
+                                <div className="flex flex-wrap items-center gap-1.5 ml-1">
+                                  {entry.threads.map((thread) => {
+                                    const tp = getThreadPalette(thread.color);
+                                    return (
+                                      <Badge
+                                        key={thread.id}
+                                        variant="outline"
+                                        className={cn("h-4.5 text-[7px] font-black uppercase tracking-widest px-2 border-current bg-background/30", tp.bg, tp.border, tp.text)}
+                                      >
+                                        <span className="h-1 w-1 rounded-full shrink-0 mr-1" style={{ backgroundColor: tp.hsl }} />
+                                        {thread.name}
+                                      </Badge>
+                                    );
+                                  })}
+                                </div>
+                              )}
                               {entry.isRunning && (
                                 <div className="flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/20 px-2 py-0.5 text-[8px] font-black uppercase tracking-widest text-primary animate-pulse">
                                   Live Flow
@@ -1960,11 +2528,52 @@ export default function TimeTrackingPage() {
                               {entry.endTime && ` - ${format(new Date(entry.endTime), 'h:mm a')}`}
                             </div>
 
-                            {entry.notes && (
-                              <div className="mt-4 rounded-xl border border-primary/10 bg-primary/5 p-4">
-                                <MarkdownNotesRenderer notes={entry.notes} />
-                              </div>
-                            )}
+                            {((entry.liveUpdates && entry.liveUpdates.length > 0) || entry.notes) && (() => {
+                              const hasUpdates = entry.liveUpdates && entry.liveUpdates.length > 0;
+                              const reflections = getReflectionsOnly(entry.notes || '');
+                              const hasNotes = !!reflections;
+                              const mode = viewingNotesMode[entry.id] || (hasUpdates ? 'outliner' : 'reflections');
+
+                              return (
+                                <div className="mt-4 rounded-2xl border border-primary/10 bg-primary/5 p-4 space-y-3">
+                                  {/* Tab Switcher if both are present */}
+                                  {hasUpdates && hasNotes && (
+                                    <div className="flex items-center gap-1.5 border-b border-primary/5 pb-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => setViewingNotesMode((p) => ({ ...p, [entry.id]: 'outliner' }))}
+                                        className={cn(
+                                          "text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-md transition-all border",
+                                          mode === 'outliner'
+                                            ? "bg-primary/10 border-primary/20 text-primary"
+                                            : "border-transparent text-muted-foreground/60 hover:text-muted-foreground hover:bg-muted/30"
+                                        )}
+                                      >
+                                        Chronos Outliner
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => setViewingNotesMode((p) => ({ ...p, [entry.id]: 'reflections' }))}
+                                        className={cn(
+                                          "text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-md transition-all border",
+                                          mode === 'reflections'
+                                            ? "bg-primary/10 border-primary/20 text-primary"
+                                            : "border-transparent text-muted-foreground/60 hover:text-muted-foreground hover:bg-muted/30"
+                                        )}
+                                      >
+                                        Reflections
+                                      </button>
+                                    </div>
+                                  )}
+
+                                  {mode === 'outliner' && hasUpdates ? (
+                                    <CompletedOutliner entry={entry} />
+                                  ) : (
+                                    <MarkdownNotesRenderer notes={hasUpdates ? reflections : (entry.notes || '')} />
+                                  )}
+                                </div>
+                              );
+                            })()}
                           </div>
 
                           <div className="flex w-full items-center gap-3 sm:w-auto">
@@ -2022,8 +2631,9 @@ export default function TimeTrackingPage() {
               }
             }}
           >
-            <DialogContent className="max-w-xl overflow-hidden rounded-[2rem] border-primary/10 bg-background/95 p-0 shadow-2xl backdrop-blur-2xl">
-              <div className="p-8 sm:p-10">
+            <DialogContent className="max-h-[90vh] max-w-xl overflow-hidden rounded-[2rem] border-primary/10 bg-background/95 p-0 shadow-2xl backdrop-blur-2xl">
+              <ScrollArea className="max-h-[85vh]">
+                <div className="p-8 sm:p-10">
                 <DialogHeader className="mb-8">
                   <DialogTitle className="text-2xl font-black italic tracking-tight">
                     {editingEntryId ? 'Edit Session Notes' : 'Session Summary'}
@@ -2224,6 +2834,17 @@ export default function TimeTrackingPage() {
                     </>
                   )}
 
+                  {previewEntry && previewEntry.liveUpdates && previewEntry.liveUpdates.length > 0 && (
+                    <div className="space-y-3">
+                      <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/60">
+                        Session Log Preview
+                      </Label>
+                      <div className="max-h-[220px] overflow-y-auto rounded-2xl border border-primary/10 bg-muted/10 p-4 custom-scrollbar text-start">
+                        <CompletedOutliner entry={previewEntry} />
+                      </div>
+                    </div>
+                  )}
+
                   <div className="space-y-3">
                     <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/60">
                       Accomplishments & Notes
@@ -2300,7 +2921,8 @@ export default function TimeTrackingPage() {
                   )}
                 </div>
               </div>
-            </DialogContent>
+            </ScrollArea>
+          </DialogContent>
           </Dialog>
 
           <Dialog
@@ -2822,11 +3444,52 @@ export default function TimeTrackingPage() {
                                       Live elapsed {getElapsedTime(new Date(entry.startTime), currentTime)}
                                     </p>
                                   )}
-                                  {entry.notes && (
-                                    <div className="mt-2 text-start">
-                                      <MarkdownNotesRenderer notes={entry.notes} />
-                                    </div>
-                                  )}
+                                  {((entry.liveUpdates && entry.liveUpdates.length > 0) || entry.notes) && (() => {
+                                    const hasUpdates = entry.liveUpdates && entry.liveUpdates.length > 0;
+                                    const reflections = getReflectionsOnly(entry.notes || '');
+                                    const hasNotes = !!reflections;
+                                    const mode = viewingNotesMode[entry.id] || (hasUpdates ? 'outliner' : 'reflections');
+
+                                    return (
+                                      <div className="mt-3 rounded-2xl border border-primary/10 bg-primary/5 p-4 space-y-3 text-start">
+                                        {/* Tab Switcher if both are present */}
+                                        {hasUpdates && hasNotes && (
+                                          <div className="flex items-center gap-1.5 border-b border-primary/5 pb-2">
+                                            <button
+                                              type="button"
+                                              onClick={() => setViewingNotesMode((p) => ({ ...p, [entry.id]: 'outliner' }))}
+                                              className={cn(
+                                                "text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-md transition-all border",
+                                                mode === 'outliner'
+                                                  ? "bg-primary/10 border-primary/20 text-primary"
+                                                  : "border-transparent text-muted-foreground/60 hover:text-muted-foreground hover:bg-muted/30"
+                                              )}
+                                            >
+                                              Chronos Outliner
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => setViewingNotesMode((p) => ({ ...p, [entry.id]: 'reflections' }))}
+                                              className={cn(
+                                                "text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-md transition-all border",
+                                                mode === 'reflections'
+                                                  ? "bg-primary/10 border-primary/20 text-primary"
+                                                  : "border-transparent text-muted-foreground/60 hover:text-muted-foreground hover:bg-muted/30"
+                                              )}
+                                            >
+                                              Reflections
+                                            </button>
+                                          </div>
+                                        )}
+
+                                        {mode === 'outliner' && hasUpdates ? (
+                                          <CompletedOutliner entry={entry} />
+                                        ) : (
+                                          <MarkdownNotesRenderer notes={hasUpdates ? reflections : (entry.notes || '')} />
+                                        )}
+                                      </div>
+                                    );
+                                  })()}
                                 </div>
                                 <div className="flex items-center gap-2 no-capture">
                                   <Badge variant="secondary" className={`font-black ${entry.isRunning ? 'bg-primary text-primary-foreground' : ''}`}>
